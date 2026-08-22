@@ -6,7 +6,7 @@ interface LayoutProps {
   currentPage: Page;
   navigate: (page: Page, eventId?: string) => void;
   children: React.ReactNode;
-  userRole?: 'admin' | 'coordinator' | 'faculty';
+  userRole?: 'admin' | 'hod' | 'coordinator' | 'faculty';
 }
 
 const sidebarSections = [
@@ -77,7 +77,7 @@ function Icon({ name, className = 'w-5 h-5' }: { name: string; className?: strin
 
 export { Icon };
 
-export default function Layout({ currentPage, navigate, children, userRole = 'admin' }: LayoutProps) {
+export default function Layout({ currentPage, navigate, children, userRole = 'faculty' }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -156,7 +156,7 @@ export default function Layout({ currentPage, navigate, children, userRole = 'ad
                 <div className="text-sm font-medium text-slate-800">Dr. Priya Sharma</div>
                 <div className="text-xs text-slate-400">HOD — IT Dept.</div>
               </div>
-              <button onClick={() => navigate('login' as Page)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => { localStorage.clear(); sessionStorage.clear(); navigate('login' as Page); }} className="text-slate-400 hover:text-slate-600">
                 <Icon name="logout" className="w-4 h-4" />
               </button>
             </div>
@@ -255,7 +255,7 @@ export default function Layout({ currentPage, navigate, children, userRole = 'ad
                   ))}
                   <div className="border-t border-slate-100">
                     <button
-                      onClick={() => navigate('login' as Page)}
+                      onClick={() => { localStorage.clear(); sessionStorage.clear(); navigate('login' as Page); }}
                       className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50"
                     >
                       Sign Out

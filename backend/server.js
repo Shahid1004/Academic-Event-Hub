@@ -1,24 +1,59 @@
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
-require("dotenv").config();
+const path = require("path");
+require("dotenv").config({
+  path: path.join(__dirname, ".env"),
+  override: true
+});
+
+const authRoutes = require("./routes/authRoutes");
+const userRoutes = require("./routes/userRoutes");
 
 const app = express();
+
+const getMongoUri = () => {
+  const configuredUri = process.env.MONGO_URI?.trim();
+  if (!configuredUri) {
+    throw new Error("MONGO_URI is not configured");
+  }
+
+  // Use the configured URI directly so environments that block SRV DNS queries
+  // can connect through Atlas' explicit host list.
+  return configuredUri;
+};
 
 app.use(cors());
 app.use(express.json());
 
+app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
+
 app.get("/", (req, res) => {
-    res.json({ message: "Academic Event Hub API is running" });
+  res.json({ message: "Academic Event Hub API is running" });
 });
 
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => {
-        console.log("MongoDB connected");
-        app.listen(process.env.PORT || 5000, () => {
-            console.log("Server running on port 5000");
-        });
-    })
-    .catch((err) => {
-        console.error("MongoDB connection failed:", err.message);
+let mongoUri;
+try {
+  mongoUri = getMongoUri();
+} catch (error) {
+  console.error(`MongoDB configuration failed: ${error.message}`);
+  process.exit(1);
+}
+
+mongoose.connect(mongoUri, {
+  serverSelectionTimeoutMS: 10000,
+  connectTimeoutMS: 10000,
+  socketTimeoutMS: 45000
+})
+  .then(() => {
+    console.log("MongoDB connected");
+
+    app.listen(process.env.PORT || 5000, () => {
+      console.log("Server running on port 5000");
     });
+  })
+  .catch((err) => {
+    console.error("MongoDB connection failed:", err.message);
+    process.exit(1);
+  });
