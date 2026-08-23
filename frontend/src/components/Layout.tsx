@@ -7,6 +7,9 @@ interface LayoutProps {
   navigate: (page: Page, eventId?: string) => void;
   children: React.ReactNode;
   userRole?: 'admin' | 'hod' | 'coordinator' | 'faculty';
+  academicYear: string;
+  academicYears: string[];
+  onAcademicYearChange: (year: string) => void;
 }
 
 const sidebarSections = [
@@ -77,11 +80,10 @@ function Icon({ name, className = 'w-5 h-5' }: { name: string; className?: strin
 
 export { Icon };
 
-export default function Layout({ currentPage, navigate, children, userRole = 'faculty' }: LayoutProps) {
+export default function Layout({ currentPage, navigate, children, userRole = 'faculty', academicYear, academicYears, onAcademicYearChange }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
-  const [academicYear, setAcademicYear] = useState('2025-26');
 
   return (
     <div className="flex h-screen bg-slate-100 overflow-hidden">
@@ -180,13 +182,11 @@ export default function Layout({ currentPage, navigate, children, userRole = 'fa
             <div className="hidden sm:block text-slate-300">|</div>
             <select
               value={academicYear}
-              onChange={e => setAcademicYear(e.target.value)}
+              onChange={e => onAcademicYearChange(e.target.value)}
               className="text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-slate-50 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             >
-              <option>2023-24</option>
-              <option>2024-25</option>
-              <option>2025-26</option>
-              <option>2026-27</option>
+              <option value="">All years</option>
+              {academicYears.map(year => <option key={year} value={year}>{year}</option>)}
             </select>
           </div>
 
