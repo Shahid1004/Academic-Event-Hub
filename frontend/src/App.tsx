@@ -45,6 +45,8 @@ const getRoleLandingPage = (user: StoredUser | null): Page => {
 
 export default function App() {
   const storedUser = getStoredUser();
+  const [academicYear, setAcademicYear] = useState('');
+  const [academicYears, setAcademicYears] = useState<string[]>([]);
   const [page, setPage] = useState<Page>(() => {
     const token = localStorage.getItem('token') || sessionStorage.getItem('token');
     return token && storedUser ? getRoleLandingPage(storedUser) : 'login';
@@ -96,6 +98,8 @@ export default function App() {
         return (
           <Dashboard
             navigate={navigate}
+            academicYear={academicYear}
+            onAcademicYearsChange={setAcademicYears}
           />
         );
 
@@ -189,6 +193,8 @@ export default function App() {
         return (
           <Dashboard
             navigate={navigate}
+            academicYear={academicYear}
+            onAcademicYearsChange={setAcademicYears}
           />
         );
     }
@@ -199,6 +205,9 @@ export default function App() {
       currentPage={page}
       navigate={navigate}
       userRole={userRole}
+      academicYear={academicYear}
+      academicYears={academicYears}
+      onAcademicYearChange={setAcademicYear}
     >
       {renderPage()}
     </Layout>
