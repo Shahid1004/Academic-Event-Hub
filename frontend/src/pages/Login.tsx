@@ -130,7 +130,7 @@ export default function Login({ onLogin }: LoginProps) {
       );
 
       setSuccess(
-        'Account created successfully. Please sign in.'
+        `${signupRole === 'faculty' ? 'Faculty' : 'Coordinator'} account created. Please wait for approval before signing in.`
       );
 
       setName('');

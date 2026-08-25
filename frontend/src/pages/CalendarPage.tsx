@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import type { Page } from '../types';
-import { sampleEvents } from '../data/sampleData';
+import { useEffect, useState } from 'react';
+import type { EventRecord, Page } from '../types';
+import { getCalendarEvents } from '../services/api';
 
 interface CalendarPageProps {
   navigate: (page: Page, eventId?: string) => void;
@@ -21,18 +21,40 @@ export default function CalendarPage({ navigate }: CalendarPageProps) {
   const [view, setView] = useState<CalView>('month');
   const [year, setYear] = useState(2025);
   const [month, setMonth] = useState(6); // July (0-indexed)
+  const [events, setEvents] = useState<EventRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+
+    getCalendarEvents()
+      .then((calendarEvents) => {
+        if (active) setEvents(calendarEvents);
+      })
+      .catch(() => {
+        if (active) setError('Unable to load calendar events.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  const eventsInMonth = sampleEvents.filter(e => {
+  const eventsInMonth = events.filter(e => {
     const d = new Date(e.date);
     return d.getFullYear() === year && d.getMonth() === month;
   });
 
   const getEventsOnDay = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    return sampleEvents.filter(e => e.date === dateStr);
+    return events.filter(e => e.date === dateStr);
   };
 
   const prev = () => {
@@ -50,7 +72,9 @@ export default function CalendarPage({ navigate }: CalendarPageProps) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold font-heading text-slate-900">Academic Event Calendar</h1>
-          <p className="text-slate-500 text-sm">{eventsInMonth.length} events this month</p>
+          <p className="text-slate-500 text-sm">
+            {loading ? 'Loading events...' : `${eventsInMonth.length} events this month`}
+          </p>
         </div>
         <div className="flex gap-2">
           {(['month', 'week', 'list'] as CalView[]).map(v => (
@@ -64,6 +88,8 @@ export default function CalendarPage({ navigate }: CalendarPageProps) {
           ))}
         </div>
       </div>
+
+      {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
       {/* Legend */}
       <div className="flex gap-4">
@@ -125,7 +151,7 @@ export default function CalendarPage({ navigate }: CalendarPageProps) {
 
         {view === 'list' && (
           <div className="divide-y divide-slate-100">
-            {sampleEvents.sort((a, b) => a.date.localeCompare(b.date)).map(e => (
+            {[...events].sort((a, b) => a.date.localeCompare(b.date)).map(e => (
               <button
                 key={e.id}
                 onClick={() => navigate('event-details', e.id)}
@@ -155,7 +181,7 @@ export default function CalendarPage({ navigate }: CalendarPageProps) {
             <div className="text-3xl mb-3">📆</div>
             <p>Week view shows events for the current week.</p>
             <div className="mt-4 space-y-3">
-              {sampleEvents.slice(0, 5).map(e => (
+              {events.slice(0, 5).map(e => (
                 <button
                   key={e.id}
                   onClick={() => navigate('event-details', e.id)}

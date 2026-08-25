@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Page } from '../types';
+import type { Page, UserProfile } from '../types';
 import { notifications } from '../data/sampleData';
 
 interface LayoutProps {
@@ -10,6 +10,7 @@ interface LayoutProps {
   academicYear: string;
   academicYears: string[];
   onAcademicYearChange: (year: string) => void;
+  profile: UserProfile;
 }
 
 const sidebarSections = [
@@ -80,10 +81,13 @@ function Icon({ name, className = 'w-5 h-5' }: { name: string; className?: strin
 
 export { Icon };
 
-export default function Layout({ currentPage, navigate, children, userRole = 'faculty', academicYear, academicYears, onAcademicYearChange }: LayoutProps) {
+export default function Layout({ currentPage, navigate, children, userRole = 'faculty', academicYear, academicYears, onAcademicYearChange, profile }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+
+  const avatarClass = profile.avatarColor === 'blue' ? 'bg-blue-600' : profile.avatarColor === 'teal' ? 'bg-teal-600' : profile.avatarColor === 'rose' ? 'bg-rose-600' : 'bg-indigo-600';
+  const userInitials = profile.name.trim().split(/\s+/).map(word => word[0]).join('').slice(0, 2).toUpperCase() || 'U';
 
   return (
     <div className="flex h-screen bg-slate-100 overflow-hidden">
@@ -153,10 +157,10 @@ export default function Layout({ currentPage, navigate, children, userRole = 'fa
         {sidebarOpen && (
           <div className="px-3 py-3 border-t border-slate-100">
             <div className="flex items-center gap-3 px-2 py-2">
-              <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-sm flex-shrink-0">PS</div>
+              <div className={`w-8 h-8 rounded-full ${avatarClass} flex items-center justify-center text-white font-bold text-sm flex-shrink-0`}>{userInitials}</div>
               <div className="flex-1 truncate">
-                <div className="text-sm font-medium text-slate-800">Dr. Priya Sharma</div>
-                <div className="text-xs text-slate-400">HOD — IT Dept.</div>
+                <div className="text-sm font-medium text-slate-800">{profile.name}</div>
+                <div className="text-xs text-slate-400">{profile.designation || profile.role} — {profile.department}</div>
               </div>
               <button onClick={() => { localStorage.clear(); sessionStorage.clear(); navigate('login' as Page); }} className="text-slate-400 hover:text-slate-600">
                 <Icon name="logout" className="w-4 h-4" />
@@ -231,15 +235,15 @@ export default function Layout({ currentPage, navigate, children, userRole = 'fa
                 onClick={() => { setShowProfile(!showProfile); setShowNotifications(false); }}
                 className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-100 rounded-xl"
               >
-                <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">PS</div>
-                <span className="hidden sm:block text-sm font-medium text-slate-700">Dr. Priya Sharma</span>
+                <div className={`w-8 h-8 rounded-full ${avatarClass} flex items-center justify-center text-white font-bold text-sm`}>{userInitials}</div>
+                <span className="hidden sm:block text-sm font-medium text-slate-700">{profile.name}</span>
                 <Icon name="chevronDown" className="w-4 h-4 text-slate-400" />
               </button>
               {showProfile && (
                 <div className="absolute right-0 top-11 w-52 bg-white rounded-2xl shadow-xl border border-slate-100 z-50 overflow-hidden">
                   <div className="px-4 py-3 border-b border-slate-100">
-                    <div className="text-sm font-semibold text-slate-800">Dr. Priya Sharma</div>
-                    <div className="text-xs text-slate-400">HOD — IT Department</div>
+                    <div className="text-sm font-semibold text-slate-800">{profile.name}</div>
+                    <div className="text-xs text-slate-400">{profile.designation || profile.role} — {profile.department}</div>
                   </div>
                   {[
                     { label: 'Profile Settings', page: 'settings' as Page },

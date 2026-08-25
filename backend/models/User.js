@@ -25,6 +25,17 @@ const userSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  employeeId: { type: String, trim: true },
+  phone: { type: String, trim: true },
+  designation: { type: String, trim: true },
+  avatarColor: { type: String, trim: true, default: "indigo" },
+  preferences: {
+    theme: {
+      mode: { type: String, enum: ["light", "dark"], default: "light" },
+      contrast: { type: String, enum: ["normal", "high"], default: "normal" },
+      accent: { type: String, enum: ["indigo", "blue", "teal", "rose"], default: "indigo" }
+    }
+  },
   role: {
     type: String,
     enum: ["admin", "hod", "coordinator", "faculty"],
@@ -38,6 +49,18 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  approvalStatus: {
+    type: String,
+    enum: ["pending", "approved", "rejected"],
+    default: "approved",
+    index: true
+  },
+  approvedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User"
+  },
+  approvedAt: Date,
+  accessExpiresAt: Date,
   passwordChangedAt: Date
 }, { timestamps: true });
 

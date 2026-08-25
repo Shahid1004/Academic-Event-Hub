@@ -10,6 +10,8 @@ require("dotenv").config({
 const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
+const eventRoutes = require("./routes/eventRoutes");
+const settingsRoutes = require("./routes/settingsRoutes");
 
 const app = express();
 
@@ -30,6 +32,8 @@ app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/events", eventRoutes);
+app.use("/api/settings", settingsRoutes);
 
 app.get("/", (req, res) => {
   res.json({ message: "Academic Event Hub API is running" });
