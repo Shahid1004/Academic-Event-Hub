@@ -10,15 +10,19 @@ const publicUser = user => ({
   name: user.name,
   email: user.email,
   department: user.department,
+  designation: user.designation,
   role: user.role,
   active: user.active,
   emailVerified: user.emailVerified,
+  approvalStatus: user.approvalStatus || "approved",
+  approvedAt: user.approvedAt,
+  accessExpiresAt: user.accessExpiresAt,
   createdAt: user.createdAt,
   updatedAt: user.updatedAt
 });
 
 exports.listUsers = async (req, res) => {
-  const filter = req.user.role === "hod" ? { department: req.user.department } : {};
+  const filter = ["hod", "faculty"].includes(req.user.role) ? { department: req.user.department } : {};
   const users = await User.find(filter).sort({ name: 1 });
   res.json({ users: users.map(publicUser) });
 };
@@ -34,7 +38,7 @@ exports.updateUser = async (req, res) => {
   }
 
   const update = {};
-  const existingUser = await User.findById(req.params.id).select("department");
+  const existingUser = await User.findById(req.params.id).select("department role");
   if (!existingUser) return res.status(404).json({ message: "User not found" });
   if (req.user.role === "hod" && existingUser.department !== req.user.department) {
     return res.status(403).json({ message: "You can only manage users in your department" });
@@ -44,8 +48,14 @@ exports.updateUser = async (req, res) => {
   if (department !== undefined) update.department = department.trim();
   if (role !== undefined) update.role = role;
   if (active !== undefined) update.active = Boolean(active);
+  if (role === "coordinator" && existingUser.role !== "coordinator") {
+    update.approvalStatus = "pending";
+    update.approvedBy = undefined;
+    update.approvedAt = undefined;
+    update.accessExpiresAt = undefined;
+  }
   try {
-    const user = await User.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
+    const user = await User.findByIdAndUpdate(req.params.id, update, { returnDocument: "after", runValidators: true });
     res.json({ user: publicUser(user) });
   } catch (error) {
     if (error.code === 11000) return res.status(409).json({ message: "Email already registered" });
@@ -70,11 +80,41 @@ exports.createUser = async (req, res) => {
   try {
     const user = await User.create({
       name: name.trim(), email: email.trim().toLowerCase(), department: department.trim(),
-      role, password: await bcrypt.hash(password, 12), active: true, emailVerified: false
+      role, password: await bcrypt.hash(password, 12), active: true, emailVerified: false,
+      approvalStatus: "approved",
+      approvedAt: new Date(),
+      accessExpiresAt: role === "coordinator" ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) : undefined
     });
     res.status(201).json({ user: publicUser(user) });
   } catch (error) {
     if (error.code === 11000) return res.status(409).json({ message: "Email already registered" });
     throw error;
   }
+};
+
+exports.updateAccess = async (req, res) => {
+  const { action } = req.body;
+  if (!["approve", "reject"].includes(action)) {
+    return res.status(400).json({ message: "Action must be approve or reject" });
+  }
+
+  const user = await User.findById(req.params.id);
+  if (!user) return res.status(404).json({ message: "User not found" });
+  if (user.role !== "faculty" && user.role !== "coordinator") {
+    return res.status(400).json({ message: "Only faculty and coordinator access can be approved" });
+  }
+  if (req.user.role === "faculty" && (user.role !== "coordinator" || user.department !== req.user.department)) {
+    return res.status(403).json({ message: "Faculty can only approve coordinators in their department" });
+  }
+
+  const now = new Date();
+  user.approvalStatus = action === "approve" ? "approved" : "rejected";
+  user.approvedBy = action === "approve" ? req.user._id : undefined;
+  user.approvedAt = action === "approve" ? now : undefined;
+  user.accessExpiresAt = action === "approve" && user.role === "coordinator"
+    ? new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+    : undefined;
+  await user.save();
+
+  return res.json({ user: publicUser(user) });
 };
