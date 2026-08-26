@@ -31,6 +31,118 @@ body {
   color: #0F172A;
 }
 
+html[data-theme='dark'] body {
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+
+html[data-theme='dark'] .bg-slate-100,
+html[data-theme='dark'] .bg-gray-100 { background-color: #0f172a; }
+html[data-theme='dark'] .bg-white { background-color: #1e293b; }
+html[data-theme='dark'] .bg-slate-50,
+html[data-theme='dark'] .bg-gray-50,
+html[data-theme='dark'] .bg-slate-50\/50 { background-color: #243247; }
+html[data-theme='dark'] .hover\:bg-slate-50:hover,
+html[data-theme='dark'] .hover\:bg-slate-100:hover,
+html[data-theme='dark'] .hover\:bg-gray-50:hover { background-color: #334155; }
+html[data-theme='dark'] .bg-indigo-50 { background-color: #312e81; }
+html[data-theme='dark'] .bg-indigo-50\/30 { background-color: rgba(49, 46, 129, 0.22); }
+html[data-theme='dark'] .bg-blue-50 { background-color: #172554; }
+html[data-theme='dark'] .bg-red-50 { background-color: #450a0a; }
+html[data-theme='dark'] .bg-green-50 { background-color: #052e16; }
+html[data-theme='dark'] .bg-amber-50 { background-color: #451a03; }
+html[data-theme='dark'] .text-slate-900,
+html[data-theme='dark'] .text-slate-800,
+html[data-theme='dark'] .text-gray-900,
+html[data-theme='dark'] .text-gray-800 { color: #f8fafc; }
+html[data-theme='dark'] .text-slate-700,
+html[data-theme='dark'] .text-slate-600,
+html[data-theme='dark'] .text-gray-700,
+html[data-theme='dark'] .text-gray-600 { color: #cbd5e1; }
+html[data-theme='dark'] .text-slate-500,
+html[data-theme='dark'] .text-slate-400,
+html[data-theme='dark'] .text-gray-500,
+html[data-theme='dark'] .text-gray-400 { color: #94a3b8; }
+html[data-theme='dark'] .border-slate-100,
+html[data-theme='dark'] .border-slate-200,
+html[data-theme='dark'] .border-gray-200,
+html[data-theme='dark'] .border-gray-100 { border-color: #334155; }
+html[data-theme='dark'] input,
+html[data-theme='dark'] select,
+html[data-theme='dark'] textarea { color: #e2e8f0; background-color: #243247; border-color: #475569; }
+html[data-theme='dark'] header,
+html[data-theme='dark'] aside { background-color: #172033; border-color: #334155; }
+html[data-theme='dark'] header { background-color: #1e293b; border-color: #334155; }
+html[data-theme='dark'] table thead { background-color: #243247; }
+html[data-theme='dark'] table tbody tr { border-color: #334155; }
+html[data-theme='dark'] .shadow-sm,
+html[data-theme='dark'] .shadow-xl,
+html[data-theme='dark'] .shadow-2xl { box-shadow: 0 8px 30px rgba(2, 6, 23, 0.35); }
+
+html[data-contrast='high'] body { color: #020617; }
+html[data-contrast='high'] button,
+html[data-contrast='high'] input,
+html[data-contrast='high'] select { border-width: 2px; }
+html[data-contrast='high'] .text-slate-500,
+html[data-contrast='high'] .text-slate-400 { color: #334155; }
+
+html[data-accent='blue'] .bg-indigo-600 { background-color: #2563eb; }
+html[data-accent='blue'] .text-indigo-600,
+html[data-accent='blue'] .text-indigo-700 { color: #1d4ed8; }
+html[data-accent='teal'] .bg-indigo-600 { background-color: #0f766e; }
+html[data-accent='teal'] .text-indigo-600,
+html[data-accent='teal'] .text-indigo-700 { color: #0f766e; }
+html[data-accent='rose'] .bg-indigo-600 { background-color: #e11d48; }
+html[data-accent='rose'] .text-indigo-600,
+html[data-accent='rose'] .text-indigo-700 { color: #be123c; }
+
+/* Keep dark mode consistent across Tailwind utility surfaces. */
+html[data-theme='dark'] body,
+html[data-theme='dark'] .bg-slate-100,
+html[data-theme='dark'] .min-h-screen { background-color: #0b1220 !important; color: #e5e7eb !important; }
+html[data-theme='dark'] .bg-white { background-color: #172033 !important; }
+html[data-theme='dark'] .bg-slate-50,
+html[data-theme='dark'] .bg-gray-50,
+html[data-theme='dark'] .bg-slate-50\/50 { background-color: #202c40 !important; }
+html[data-theme='dark'] .text-slate-900,
+html[data-theme='dark'] .text-slate-800,
+html[data-theme='dark'] .text-gray-900,
+html[data-theme='dark'] .text-gray-800 { color: #f8fafc !important; }
+html[data-theme='dark'] .text-slate-700,
+html[data-theme='dark'] .text-slate-600,
+html[data-theme='dark'] .text-gray-700,
+html[data-theme='dark'] .text-gray-600 { color: #d1d5db !important; }
+html[data-theme='dark'] .text-slate-500,
+html[data-theme='dark'] .text-slate-400,
+html[data-theme='dark'] .text-gray-500,
+html[data-theme='dark'] .text-gray-400 { color: #9ca3af !important; }
+html[data-theme='dark'] .border-slate-50,
+html[data-theme='dark'] .border-slate-100,
+html[data-theme='dark'] .border-slate-200,
+html[data-theme='dark'] .border-gray-100,
+html[data-theme='dark'] .border-gray-200 { border-color: #344258 !important; }
+html[data-theme='dark'] input,
+html[data-theme='dark'] select,
+html[data-theme='dark'] textarea { background-color: #202c40 !important; color: #f8fafc !important; border-color: #4b5b73 !important; }
+html[data-theme='dark'] input::placeholder,
+html[data-theme='dark'] textarea::placeholder { color: #94a3b8 !important; }
+html[data-theme='dark'] .hover\:bg-slate-50:hover,
+html[data-theme='dark'] .hover\:bg-slate-100:hover,
+html[data-theme='dark'] .hover\:bg-gray-50:hover { background-color: #2b3950 !important; }
+html[data-theme='dark'] .bg-indigo-50 { background-color: #29346f !important; }
+html[data-theme='dark'] .bg-indigo-50\/30 { background-color: rgba(41, 52, 111, 0.35) !important; }
+html[data-theme='dark'] .bg-green-50 { background-color: #123524 !important; }
+html[data-theme='dark'] .bg-red-50 { background-color: #3b1d26 !important; }
+html[data-theme='dark'] .bg-amber-50 { background-color: #3b2c16 !important; }
+html[data-theme='dark'] .bg-blue-50 { background-color: #172d4d !important; }
+
+html[data-theme='dark'][data-contrast='high'] body { background-color: #080d17 !important; }
+html[data-theme='dark'][data-contrast='high'] .bg-white { background-color: #111a2a !important; }
+html[data-theme='dark'][data-contrast='high'] .bg-slate-50,
+html[data-theme='dark'][data-contrast='high'] .bg-gray-50 { background-color: #1b2940 !important; }
+html[data-theme='dark'][data-contrast='high'] .border-slate-100,
+html[data-theme='dark'][data-contrast='high'] .border-slate-200 { border-color: #60708a !important; }
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 4px;

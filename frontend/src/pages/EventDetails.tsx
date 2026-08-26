@@ -312,11 +312,14 @@ Attendance: ${event.attendance}%</p>
                   ['Event Type', event.type],
                   ['Department', event.department === 'BOTH' ? 'BOTH – IT+AIDS' : event.department],
                   ['Academic Year', event.academicYear],
+                  ['Student Year(s)', event.targetYears?.length ? event.targetYears.map(year => `Year ${year}`).join(', ') : event.targetStudents],
                   ['Semester', `Semester ${event.semester}`],
                   ['Date', event.date],
+                  ['Date To', event.dateTo || event.date],
                   ['Time', `${event.startTime} – ${event.endTime}`],
                   ['Venue', event.venue],
                   ['Mode', event.mode],
+                  ['Sponsored By', event.sponsoredBy || '—'],
                   ['Target Students', event.targetStudents],
                   ['Expected Participants', event.expectedParticipants.toString()],
                   ['Actual Participants', event.actualParticipants > 0 ? event.actualParticipants.toString() : 'N/A'],
@@ -359,27 +362,21 @@ Attendance: ${event.attendance}%</p>
           {/* Sidebar Info */}
           <div className="space-y-4">
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-              <h3 className="font-bold font-heading text-slate-800 mb-3">Coordinator</h3>
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-700 font-bold text-sm">
-                  {event.coordinator.split(' ').map(w => w[0]).join('').slice(0, 2)}
-                </div>
-                <div>
-                  <div className="font-semibold text-slate-800 text-sm">{event.coordinator}</div>
-                  <div className="text-xs text-slate-400">Main Coordinator</div>
-                </div>
-              </div>
-              {event.additionalCoordinators.map(c => (
-                <div key={c} className="flex items-center gap-3 mb-2">
+              <h3 className="font-bold font-heading text-slate-800 mb-3">Faculty Coordinators</h3>
+              {[...(event.assignedFaculty || []), ...(event.assignedFaculty?.length ? [] : [event.coordinator, ...event.additionalCoordinators])].map((coordinator, index) => {
+                const name = typeof coordinator === 'string' ? coordinator : `${coordinator.name}${coordinator.designation ? ` (${coordinator.designation})` : ''}`;
+                return (
+                <div key={`${name}-${index}`} className="flex items-center gap-3 mb-2">
                   <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 font-bold text-xs">
-                    {c.split(' ').map(w => w[0]).join('').slice(0, 2)}
+                    {name.split(' ').map(w => w[0]).join('').slice(0, 2)}
                   </div>
                   <div>
-                    <div className="font-medium text-slate-700 text-xs">{c}</div>
-                    <div className="text-xs text-slate-400">Additional</div>
+                    <div className="font-medium text-slate-700 text-xs">{name}</div>
+                    <div className="text-xs text-slate-400">Faculty Coordinator</div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">

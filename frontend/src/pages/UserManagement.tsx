@@ -10,6 +10,8 @@ interface User {
   department: string;
   role: UserRole;
   active: boolean;
+  approvalStatus: 'pending' | 'approved' | 'rejected';
+  accessExpiresAt?: string;
 }
 
 interface UserManagementProps {
@@ -50,14 +52,24 @@ export default function UserManagement({
 
   const canManageUsers =
     currentUserRole === 'admin' || currentUserRole === 'hod';
+  const canApproveAccess = currentUserRole === 'admin' || currentUserRole === 'faculty';
 
   useEffect(() => {
-    if (!canManageUsers) return;
+    if (!canManageUsers && !canApproveAccess) return;
     axios.get(`${apiUrl}/api/users`, getAuthConfig())
       .then(response => setUsers(response.data.users))
       .catch(err => setError(err.response?.data?.message || 'Unable to load users.'))
       .finally(() => setLoading(false));
-  }, [canManageUsers]);
+  }, [canManageUsers, canApproveAccess]);
+
+  const updateAccess = async (user: User, action: 'approve' | 'reject') => {
+    try {
+      const response = await axios.patch(`${apiUrl}/api/users/${user.id}/access`, { action }, getAuthConfig());
+      setUsers(prev => prev.map(item => item.id === user.id ? response.data.user : item));
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Unable to update access approval.');
+    }
+  };
 
   const openEditModal = (user: User) => {
     setSelectedUser(user);
@@ -149,7 +161,7 @@ export default function UserManagement({
     }
   };
 
-  if (!canManageUsers) {
+  if (!canManageUsers && !canApproveAccess) {
     return (
       <div className="min-h-[70vh] flex items-center justify-center p-6">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-10 text-center max-w-md">
@@ -172,7 +184,7 @@ export default function UserManagement({
           </h2>
 
           <p className="text-gray-500 mt-2">
-            Only Admin and HOD users can manage users and change their roles.
+            You do not have permission to manage user access.
           </p>
         </div>
       </div>
@@ -238,6 +250,7 @@ export default function UserManagement({
                     <p className="text-sm text-gray-500">
                       {getRoleLabel(user.role)} • {user.department} •{' '}
                       {user.email} {user.active ? '' : ' • Disabled'}
+                      {user.accessExpiresAt ? ` • Access until ${new Date(user.accessExpiresAt).toLocaleDateString()}` : ''}
                     </p>
                   </div>
 
@@ -253,20 +266,49 @@ export default function UserManagement({
                     {getRoleLabel(user.role)}
                   </span>
 
-                  <button
-                    onClick={() => openEditModal(user)}
-                    className="px-4 py-2 border border-indigo-200 text-indigo-600 hover:bg-indigo-50 rounded-lg text-sm font-medium transition"
-                  >
-                    Edit
-                  </button>
+                  <span className={`px-3 py-1.5 rounded-full text-xs font-semibold ${
+                    user.approvalStatus === 'approved' ? 'bg-green-100 text-green-700' :
+                    user.approvalStatus === 'rejected' ? 'bg-red-100 text-red-700' :
+                    'bg-amber-100 text-amber-700'
+                  }`}>
+                    {user.approvalStatus === 'approved' ? 'Approved' : user.approvalStatus === 'rejected' ? 'Rejected' : 'Pending approval'}
+                  </span>
 
-                  <button
-                    onClick={() => setDeleteUserId(user.id)}
-                    disabled={!user.active}
-                    className="px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium transition"
-                  >
-                    Remove
-                  </button>
+                  {canApproveAccess && user.approvalStatus !== 'approved' && (currentUserRole === 'admin' || user.role === 'coordinator') && (
+                    <>
+                      <button
+                        onClick={() => updateAccess(user, 'approve')}
+                        className="px-4 py-2 border border-green-200 text-green-700 hover:bg-green-50 rounded-lg text-sm font-medium transition"
+                      >
+                        Approve
+                      </button>
+                      {user.approvalStatus === 'pending' && (
+                        <button
+                          onClick={() => updateAccess(user, 'reject')}
+                          className="px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium transition"
+                        >
+                          Reject
+                        </button>
+                      )}
+                    </>
+                  )}
+
+                  {canManageUsers && <>
+                    <button
+                      onClick={() => openEditModal(user)}
+                      className="px-4 py-2 border border-indigo-200 text-indigo-600 hover:bg-indigo-50 rounded-lg text-sm font-medium transition"
+                    >
+                      Edit
+                    </button>
+
+                    <button
+                      onClick={() => setDeleteUserId(user.id)}
+                      disabled={!user.active}
+                      className="px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium transition"
+                    >
+                      Remove
+                    </button>
+                  </>}
 
                 </div>
 

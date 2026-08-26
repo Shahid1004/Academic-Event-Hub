@@ -58,7 +58,8 @@ exports.register = async (req, res) => {
       department,
       role,
       active: true,
-      emailVerified: false
+      emailVerified: false,
+      approvalStatus: "pending"
     });
 
     res.status(201).json({
@@ -96,6 +97,17 @@ exports.login = async (req, res) => {
       return res.status(403).json({ message: "This account is disabled" });
     }
 
+    if (user.approvalStatus && user.approvalStatus !== "approved") {
+      const message = user.approvalStatus === "rejected"
+        ? "Your account access request was rejected"
+        : "Your account is waiting for approval";
+      return res.status(403).json({ message });
+    }
+
+    if (user.role === "coordinator" && user.accessExpiresAt && user.accessExpiresAt <= new Date()) {
+      return res.status(403).json({ message: "Coordinator access has expired. Ask an admin or faculty member to approve access again" });
+    }
+
     const passwordMatch = await bcrypt.compare(password, user.password);
 
     if (!passwordMatch) {
@@ -130,7 +142,11 @@ exports.login = async (req, res) => {
         email: user.email,
         department: user.department,
         role,
-        active: user.active
+        active: user.active,
+        employeeId: user.employeeId,
+        phone: user.phone,
+        designation: user.designation,
+        avatarColor: user.avatarColor
       }
     });
   } catch (error) {
