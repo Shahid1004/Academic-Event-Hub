@@ -59,8 +59,8 @@ export default function Reports() {
             <label className="text-xs text-slate-500 mb-1 block">Semester</label>
             <select value={semFilter} onChange={e => setSemFilter(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400">
               <option value="ALL">All Semesters</option>
-              <option value="I">Semester I</option>
-              <option value="II">Semester II</option>
+              <option value="I">Odd semester</option>
+              <option value="II">Even semester</option>
             </select>
           </div>
           <div>

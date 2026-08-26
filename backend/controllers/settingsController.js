@@ -62,20 +62,25 @@ exports.getSettings = async (req, res) => {
 
 exports.updateSettings = async (req, res) => {
   await getOrCreateSettings();
+  const user = await User.findById(req.user._id).select("preferences");
   const globalKeys = ["academicYears", "departments", "eventTypes", "documentCategories", "notifications"];
   const hasGlobalUpdate = globalKeys.some(key => req.body[key] !== undefined);
   if (hasGlobalUpdate && !["admin", "hod"].includes(req.user.role)) {
     return res.status(403).json({ message: "Only admin or HOD can change shared settings" });
   }
 
+  let currentUser = user;
   if (req.body.theme !== undefined) {
-    const user = await User.findByIdAndUpdate(
+    const theme = req.body.theme || {};
+    currentUser = await User.findByIdAndUpdate(
       req.user._id,
-      { $set: { "preferences.theme": req.body.theme } },
+      { $set: Object.fromEntries(
+        ["mode", "contrast", "accent"]
+          .filter(key => theme[key] !== undefined)
+          .map(key => [`preferences.theme.${key}`, theme[key]])
+      ) },
       { returnDocument: "after", runValidators: true }
     );
-    const settings = await getOrCreateSettings();
-    return res.json({ settings: publicSettings(settings, user.preferences.theme) });
   }
 
   const allowed = globalKeys;
@@ -88,7 +93,7 @@ exports.updateSettings = async (req, res) => {
     { $set: update },
     { returnDocument: "after", runValidators: true }
   );
-  res.json({ settings: publicSettings(settings) });
+  res.json({ settings: publicSettings(settings, currentUser.preferences?.theme) });
 };
 
 exports.updateProfile = async (req, res) => {

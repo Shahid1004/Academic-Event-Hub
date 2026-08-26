@@ -4,6 +4,7 @@ import { getCalendarEvents } from '../services/api';
 
 interface CalendarPageProps {
   navigate: (page: Page, eventId?: string) => void;
+  academicYear?: string;
 }
 
 type CalView = 'month' | 'week' | 'list';
@@ -17,7 +18,7 @@ const deptColors: Record<string, string> = {
   BOTH: 'bg-amber-500',
 };
 
-export default function CalendarPage({ navigate }: CalendarPageProps) {
+export default function CalendarPage({ navigate, academicYear = '' }: CalendarPageProps) {
   const [view, setView] = useState<CalView>('month');
   const [year, setYear] = useState(2025);
   const [month, setMonth] = useState(6); // July (0-indexed)
@@ -28,7 +29,7 @@ export default function CalendarPage({ navigate }: CalendarPageProps) {
   useEffect(() => {
     let active = true;
 
-    getCalendarEvents()
+    getCalendarEvents({ academicYear: academicYear || undefined })
       .then((calendarEvents) => {
         if (active) setEvents(calendarEvents);
       })
@@ -42,7 +43,7 @@ export default function CalendarPage({ navigate }: CalendarPageProps) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [academicYear]);
 
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();

@@ -22,7 +22,7 @@ export default function CreateEvent({ navigate }: CreateEventProps) {
   const [targetYears, setTargetYears] = useState<number[]>([]);
 
   useEffect(() => {
-    getUsers().then(users => setFacultyUsers(users.filter(user => user.role === 'faculty' && user.active))).catch(() => undefined);
+    getUsers().then(users => setFacultyUsers(users.filter(user => ['admin', 'hod', 'coordinator', 'faculty'].includes(user.role) && user.active))).catch(() => undefined);
   }, []);
 
   const update = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
@@ -36,11 +36,18 @@ export default function CreateEvent({ navigate }: CreateEventProps) {
     setSaving(true);
     setError('');
     try {
+      const selectedCoordinatorNames = facultyUsers
+        .filter(user => assignedFaculty.includes(user.id))
+        .map(user => user.name);
+      const additionalCoordinatorNames = form.additionalCoordinators
+        .split(',')
+        .map(name => name.trim())
+        .filter(Boolean);
       await createEvent({
         ...form,
         department: form.department as 'IT' | 'AIDS' | 'BOTH',
         resourcePerson: { name: form.rpName, designation: form.rpDesignation, organization: form.rpOrganization, contact: form.rpContact, email: form.rpEmail },
-        coordinator: facultyUsers.filter(user => assignedFaculty.includes(user.id)).map(user => user.name).join(', '),
+        coordinator: [...selectedCoordinatorNames, ...additionalCoordinatorNames].join(', '),
         assignedFaculty,
         targetYears,
         status: action === 'draft' ? 'Draft' : 'Upcoming',
@@ -99,8 +106,8 @@ export default function CreateEvent({ navigate }: CreateEventProps) {
             <div>
               <label className={labelCls}>Semester</label>
               <select value={form.semester} onChange={update('semester')} className={inputCls}>
-                <option value="I">Semester I</option>
-                <option value="II">Semester II</option>
+                <option value="I">Odd semester</option>
+                <option value="II">Even semester</option>
               </select>
             </div>
           </div>
@@ -170,7 +177,7 @@ export default function CreateEvent({ navigate }: CreateEventProps) {
               <input type="number" value={form.expectedParticipants} onChange={update('expectedParticipants')} placeholder="e.g., 60" className={inputCls} />
             </div>
             <div className="sm:col-span-2">
-              <label className={labelCls}>Faculty Event Managers (select one or more)</label>
+              <label className={labelCls}>Event Coordinators (select one or more)</label>
               {facultyUsers.length ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-xl border border-slate-200 p-3 bg-slate-50">
                   {facultyUsers.map(user => (
@@ -185,7 +192,11 @@ export default function CreateEvent({ navigate }: CreateEventProps) {
                     </label>
                   ))}
                 </div>
-              ) : <p className="text-xs text-slate-400">No active faculty users available for assignment.</p>}
+              ) : <p className="text-xs text-slate-400">No active coordinators available for assignment.</p>}
+            </div>
+            <div className="sm:col-span-2">
+              <label className={labelCls}>Additional coordinator names</label>
+              <input value={form.additionalCoordinators} onChange={update('additionalCoordinators')} placeholder="Add names separated by commas" className={inputCls} />
             </div>
           </div>
         </div>
