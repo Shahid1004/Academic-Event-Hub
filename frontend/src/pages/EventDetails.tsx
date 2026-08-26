@@ -76,6 +76,7 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
   );
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadDocName, setUploadDocName] = useState('');
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, File[]>>({});
   const [aiLoading, setAiLoading] = useState(false);
   const [aiGenerated, setAiGenerated] = useState(false);
@@ -185,7 +186,7 @@ Attendance: ${event.attendance}%</p>
 
   const downloadPdf = async (pdf: PDFDocument, filename: string) => {
     const bytes = await pdf.save();
-    const objectUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    const objectUrl = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: 'application/pdf' }));
     const link = document.createElement('a');
     link.href = objectUrl;
     link.download = filename;
@@ -368,7 +369,7 @@ Attendance: ${event.attendance}%</p>
                 return (
                 <div key={`${name}-${index}`} className="flex items-center gap-3 mb-2">
                   <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 font-bold text-xs">
-                    {name.split(' ').map(w => w[0]).join('').slice(0, 2)}
+                    {name.split(' ').map((word: string) => word[0]).join('').slice(0, 2)}
                   </div>
                   <div>
                     <div className="font-medium text-slate-700 text-xs">{name}</div>
