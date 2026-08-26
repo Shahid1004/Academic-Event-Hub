@@ -31,6 +31,7 @@ app.use(express.json());
 
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/departments", departmentRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/settings", settingsRoutes);
