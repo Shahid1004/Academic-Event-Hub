@@ -313,7 +313,7 @@ Attendance: ${event.attendance}%</p>
                   ['Department', event.department === 'BOTH' ? 'BOTH – IT+AIDS' : event.department],
                   ['Academic Year', event.academicYear],
                   ['Student Year(s)', event.targetYears?.length ? event.targetYears.map(year => `Year ${year}`).join(', ') : event.targetStudents],
-                  ['Semester', `Semester ${event.semester}`],
+                  ['Semester', event.semester === 'I' ? 'Odd semester' : 'Even semester'],
                   ['Date', event.date],
                   ['Date To', event.dateTo || event.date],
                   ['Time', `${event.startTime} – ${event.endTime}`],
