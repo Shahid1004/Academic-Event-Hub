@@ -235,7 +235,14 @@ export default function AllEvents({ navigate, filterDept, title = 'All Events', 
                   </td>
                 </tr>
               ) : filtered.map((event, i) => (
-                <tr key={event.id} className={`border-b border-slate-50 hover:bg-indigo-50/30 cursor-pointer ${i % 2 === 0 ? '' : 'bg-slate-50/20'}`}>
+                <tr
+                  key={event.id}
+                  onClick={() => navigate('event-details', event.id)}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') navigate('event-details', event.id); }}
+                  tabIndex={0}
+                  role="button"
+                  className={`border-b border-slate-50 hover:bg-indigo-50/30 cursor-pointer ${i % 2 === 0 ? '' : 'bg-slate-50/20'}`}
+                >
                   <td className="px-4 py-3">
                     <button onClick={() => navigate('event-details', event.id)} className="text-left">
                       <div className="font-medium text-slate-800 hover:text-indigo-700">{event.name}</div>

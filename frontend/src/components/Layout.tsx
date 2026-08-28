@@ -110,8 +110,8 @@ export default function Layout({ currentPage, navigate, children, userRole = 'fa
           )}
         </div>
 
-        {/* Create Event Button — admin only */}
-        {sidebarOpen && userRole === 'admin' && (
+        {/* Create Event Button */}
+        {sidebarOpen && ['admin', 'coordinator'].includes(userRole) && (
           <div className="px-3 pt-3">
             <button
               onClick={() => navigate('create-event')}

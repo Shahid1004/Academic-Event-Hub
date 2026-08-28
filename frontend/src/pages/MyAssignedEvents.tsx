@@ -1,9 +1,11 @@
-import type { Page } from '../types';
-import { sampleEvents } from '../data/sampleData';
+import { useEffect, useState } from 'react';
+import type { EventRecord, Page, UserProfile } from '../types';
+import { getEvents } from '../services/api';
 import { eventTypeColors } from './Dashboard';
 
 interface MyAssignedEventsProps {
   navigate: (page: Page, eventId?: string) => void;
+  profile: UserProfile;
 }
 
 const docPercent = (docStatus: string) =>
@@ -16,17 +18,18 @@ const statusColors: Record<string, string> = {
   'Cancelled': 'bg-red-100 text-red-700',
 };
 
-// Assigned to Dr. Priya Sharma (IT HOD)
-const assignedEvents = sampleEvents.filter(e =>
-  e.coordinator === 'Dr. Priya Sharma' || e.additionalCoordinators.includes('Dr. Priya Sharma')
-);
-
-export default function MyAssignedEvents({ navigate }: MyAssignedEventsProps) {
+export default function MyAssignedEvents({ navigate, profile }: MyAssignedEventsProps) {
+  const [events, setEvents] = useState<EventRecord[]>([]);
+  useEffect(() => { getEvents().then(setEvents).catch(() => setEvents([])); }, []);
+  const assignedEvents = events.filter(event =>
+    event.assignedFaculty?.some(assigned => typeof assigned === 'string' ? assigned === profile.id : assigned.id === profile.id) ||
+    event.coordinator.toLowerCase().includes(profile.name.toLowerCase())
+  );
   return (
     <div className="p-6 space-y-5">
       <div>
         <h1 className="text-2xl font-bold font-heading text-slate-900">My Assigned Events</h1>
-        <p className="text-slate-500 text-sm mt-0.5">Dr. Priya Sharma — {assignedEvents.length} events assigned</p>
+        <p className="text-slate-500 text-sm mt-0.5">{profile.name} — {assignedEvents.length} events assigned</p>
       </div>
 
       <div className="grid gap-4">

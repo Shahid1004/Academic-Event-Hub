@@ -53,6 +53,9 @@ export default function UserManagement({
   const canManageUsers =
     currentUserRole === 'admin' || currentUserRole === 'hod';
   const canApproveAccess = currentUserRole === 'admin' || currentUserRole === 'faculty';
+  const availableRoles: UserRole[] = currentUserRole === 'faculty'
+    ? ['coordinator']
+    : ['admin', 'hod', 'coordinator', 'faculty'];
 
   useEffect(() => {
     if (!canManageUsers && !canApproveAccess) return;
@@ -412,21 +415,7 @@ export default function UserManagement({
                   }
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  <option value="admin">
-                    Admin
-                  </option>
-
-                  <option value="hod">
-                    HOD
-                  </option>
-
-                  <option value="coordinator">
-                    Event Coordinator
-                  </option>
-
-                  <option value="faculty">
-                    Faculty
-                  </option>
+                  {availableRoles.map(role => <option key={role} value={role}>{getRoleLabel(role)}</option>)}
                 </select>
               </div>
 
@@ -535,21 +524,7 @@ export default function UserManagement({
                   }
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  <option value="admin">
-                    Admin
-                  </option>
-
-                  <option value="hod">
-                    HOD
-                  </option>
-
-                  <option value="coordinator">
-                    Event Coordinator
-                  </option>
-
-                  <option value="faculty">
-                    Faculty
-                  </option>
+                  {availableRoles.map(role => <option key={role} value={role}>{getRoleLabel(role)}</option>)}
                 </select>
               </div>
 

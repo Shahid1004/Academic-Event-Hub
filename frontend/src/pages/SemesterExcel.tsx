@@ -1,7 +1,11 @@
-import { useState } from 'react';
-import { sampleEvents, academicYears, eventTypes } from '../data/sampleData';
+import { useEffect, useState } from 'react';
+import { academicYears, eventTypes } from '../data/sampleData';
+import type { EventRecord } from '../types';
+import { getEvents } from '../services/api';
 
-export default function SemesterExcel() {
+interface SemesterExcelProps { academicYear?: string; }
+
+export default function SemesterExcel({ academicYear = '' }: SemesterExcelProps) {
   const [yearFilter, setYearFilter] = useState('2025-26');
   const [semFilter, setSemFilter] = useState('ALL');
   const [deptFilter, setDeptFilter] = useState('ALL');
@@ -10,8 +14,14 @@ export default function SemesterExcel() {
   const [search, setSearch] = useState('');
   const [sortCol, setSortCol] = useState<string>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [events, setEvents] = useState<EventRecord[]>([]);
 
-  const filtered = sampleEvents.filter(e => {
+  useEffect(() => {
+    getEvents({ academicYear: academicYear || undefined }).then(setEvents).catch(() => setEvents([]));
+    if (academicYear) setYearFilter(academicYear);
+  }, [academicYear]);
+
+  const filtered = events.filter(e => {
     const matchYear = yearFilter === 'ALL' || e.academicYear === yearFilter;
     const matchSem = semFilter === 'ALL' || e.semester === semFilter;
     const matchDept = deptFilter === 'ALL' || e.department === deptFilter;
@@ -125,7 +135,7 @@ export default function SemesterExcel() {
                   <td className="px-3 py-2 border-r border-slate-100">
                     <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${e.department === 'IT' ? 'bg-blue-100 text-blue-700' : e.department === 'AIDS' ? 'bg-violet-100 text-violet-700' : 'bg-amber-100 text-amber-700'}`}>{e.department}</span>
                   </td>
-                  <td className="px-3 py-2 border-r border-slate-100">{e.targetStudents.split(' ').slice(0, 3).join(' ')}</td>
+                  <td className="px-3 py-2 border-r border-slate-100">{(e.targetStudents || '').split(' ').slice(0, 3).join(' ') || '—'}</td>
                   <td className="px-3 py-2 border-r border-slate-100">{e.type}</td>
                   <td className="px-3 py-2 font-medium text-slate-800 border-r border-slate-100 max-w-48">{e.name}</td>
                   <td className="px-3 py-2 border-r border-slate-100 whitespace-nowrap">{e.date}</td>

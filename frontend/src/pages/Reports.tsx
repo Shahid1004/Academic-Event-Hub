@@ -1,7 +1,11 @@
-import { useState } from 'react';
-import { sampleEvents, eventTypes, academicYears } from '../data/sampleData';
+import { useEffect, useState } from 'react';
+import { eventTypes, academicYears } from '../data/sampleData';
+import type { EventRecord } from '../types';
+import { getEvents } from '../services/api';
 
-export default function Reports() {
+interface ReportsProps { academicYear?: string; }
+
+export default function Reports({ academicYear = '' }: ReportsProps) {
   const [yearFilter, setYearFilter] = useState('2025-26');
   const [semFilter, setSemFilter] = useState('ALL');
   const [deptFilter, setDeptFilter] = useState('ALL');
@@ -11,8 +15,14 @@ export default function Reports() {
   const [coordinatorFilter, setCoordinatorFilter] = useState('');
   const [reportStatusFilter, setReportStatusFilter] = useState('ALL');
   const [generating, setGenerating] = useState<string | null>(null);
+  const [events, setEvents] = useState<EventRecord[]>([]);
 
-  const filtered = sampleEvents.filter(e => {
+  useEffect(() => {
+    getEvents({ academicYear: academicYear || undefined }).then(setEvents).catch(() => setEvents([]));
+    if (academicYear) setYearFilter(academicYear);
+  }, [academicYear]);
+
+  const filtered = events.filter(e => {
     const matchYear = yearFilter === 'ALL' || e.academicYear === yearFilter;
     const matchSem = semFilter === 'ALL' || e.semester === semFilter;
     const matchDept = deptFilter === 'ALL' || e.department === deptFilter;
