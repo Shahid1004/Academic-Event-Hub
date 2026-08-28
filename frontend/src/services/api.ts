@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AppSettings, CreateEventPayload, DashboardSummary, EventRecord, UserProfile } from '../types';
+import type { AppSettings, AttendanceSummary, CreateEventPayload, DashboardSummary, EventRecord, StudentAttendanceRecord, UserProfile } from '../types';
 
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -99,3 +99,49 @@ export async function getUsers() {
   );
   return response.data.users;
 }
+
+export async function getEventAttendanceApi(eventId: string) {
+  try {
+    const response = await axios.get<{
+      success: boolean;
+      data: { eventId: string; summary: AttendanceSummary; records: StudentAttendanceRecord[] };
+    }>(`${apiUrl}/api/attendance/event/${eventId}`, {
+      headers: { Authorization: `Bearer ${getToken()}` }
+    });
+    return response.data.data;
+  } catch (err) {
+    console.warn('API getEventAttendance failed, using local mode fallback:', err);
+    return null;
+  }
+}
+
+export async function saveEventAttendanceApi(eventId: string, records: StudentAttendanceRecord[]) {
+  try {
+    const response = await axios.post<{
+      success: boolean;
+      summary: AttendanceSummary;
+      records: StudentAttendanceRecord[];
+    }>(`${apiUrl}/api/attendance/event/${eventId}/batch`, { records }, {
+      headers: { Authorization: `Bearer ${getToken()}` }
+    });
+    return response.data;
+  } catch (err) {
+    console.warn('API saveEventAttendance failed, using local mode fallback:', err);
+    return null;
+  }
+}
+
+export async function qrCheckInApi(eventId: string, regNo: string, studentName?: string) {
+  try {
+    const response = await axios.post<{
+      success: boolean;
+      message: string;
+      data: StudentAttendanceRecord;
+    }>(`${apiUrl}/api/attendance/event/${eventId}/qr-checkin`, { regNo, studentName });
+    return response.data;
+  } catch (err) {
+    console.warn('API qrCheckIn failed, using local mode fallback:', err);
+    return null;
+  }
+}
+
