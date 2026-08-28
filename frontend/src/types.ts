@@ -146,3 +146,25 @@ export interface AppSettings {
   notifications: Record<string, boolean>;
   theme: { mode: 'light' | 'dark'; contrast: 'normal' | 'high'; accent: 'indigo' | 'blue' | 'teal' | 'rose' };
 }
+
+export type AttendanceStatus = 'P' | 'A' | 'OD';
+export type CheckInMethod = 'online' | 'qr' | 'hardcopy' | 'excel';
+
+export interface StudentAttendanceRecord {
+  regNo: string;
+  studentName: string;
+  className: string;
+  department?: string;
+  status: AttendanceStatus;
+  checkInMethod?: CheckInMethod;
+  markedAt?: string;
+  remarks?: string;
+}
+
+export interface AttendanceSummary {
+  total: number;
+  present: number;
+  absent: number;
+  od: number;
+  attendancePercentage: number;
+}

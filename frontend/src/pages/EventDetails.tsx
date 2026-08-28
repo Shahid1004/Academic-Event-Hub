@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import type { Page } from '../types';
+import { useState, useEffect } from 'react';
+import type { Page, StudentAttendanceRecord, AttendanceStatus } from '../types';
 import { sampleEvents } from '../data/sampleData';
 import { eventTypeColors } from './Dashboard';
+import { getEventAttendanceApi, saveEventAttendanceApi, qrCheckInApi } from '../services/api';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
 interface EventDetailsProps {
@@ -11,15 +12,15 @@ interface EventDetailsProps {
 
 type Tab = 'overview' | 'attendance' | 'feedback' | 'documents' | 'ai-analysis' | 'final-report' | 'merged-report';
 
-const students = [
-  { reg: '22IT001', name: 'Arun Kumar M', class: 'III IT A', status: 'P' as const },
-  { reg: '22IT002', name: 'Bhavya S', class: 'III IT A', status: 'P' as const },
-  { reg: '22IT003', name: 'Chethan R', class: 'III IT B', status: 'A' as const },
-  { reg: '22IT004', name: 'Divya P', class: 'III IT A', status: 'OD' as const },
-  { reg: '22IT005', name: 'Elan K', class: 'III IT B', status: 'P' as const },
-  { reg: '22IT006', name: 'Fathima N', class: 'III IT A', status: 'P' as const },
-  { reg: '22IT007', name: 'Ganesh S', class: 'III IT B', status: 'A' as const },
-  { reg: '22IT008', name: 'Harini M', class: 'III IT A', status: 'P' as const },
+const defaultStudents: StudentAttendanceRecord[] = [
+  { regNo: '22IT001', studentName: 'Arun Kumar M', className: 'III IT A', status: 'P', department: 'IT' },
+  { regNo: '22IT002', studentName: 'Bhavya S', className: 'III IT A', status: 'P', department: 'IT' },
+  { regNo: '22IT003', studentName: 'Chethan R', className: 'III IT B', status: 'A', department: 'IT' },
+  { regNo: '22IT004', studentName: 'Divya P', className: 'III IT A', status: 'OD', department: 'IT' },
+  { regNo: '22IT005', studentName: 'Elan K', className: 'III IT B', status: 'P', department: 'IT' },
+  { regNo: '22IT006', studentName: 'Fathima N', className: 'III IT A', status: 'P', department: 'IT' },
+  { regNo: '22IT007', studentName: 'Ganesh S', className: 'III IT B', status: 'A', department: 'IT' },
+  { regNo: '22IT008', studentName: 'Harini M', className: 'III IT A', status: 'P', department: 'IT' },
 ];
 
 const documents = [
@@ -71,9 +72,26 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
   const [tab, setTab] = useState<Tab>('overview');
   const [attendanceFilter, setAttendanceFilter] = useState<'All' | 'P' | 'A' | 'OD'>('All');
   const [attendanceSearch, setAttendanceSearch] = useState('');
-  const [studentStatuses, setStudentStatuses] = useState<Record<string, 'P' | 'A' | 'OD'>>(
-    Object.fromEntries(students.map(s => [s.reg, s.status]))
-  );
+  
+  // Attendance records state
+  const [attendanceRecords, setAttendanceRecords] = useState<StudentAttendanceRecord[]>(defaultStudents);
+  const [savingAttendance, setSavingAttendance] = useState(false);
+  const [saveToast, setSaveToast] = useState<string | null>(null);
+
+  // Attendance mode
+  const [attendanceMode, setAttendanceMode] = useState<'online' | 'qr' | 'hardcopy' | 'od_generator' | 'excel'>('online');
+  
+  // QR scanner simulator state
+  const [qrRegInput, setQrRegInput] = useState('');
+  const [qrLogs, setQrLogs] = useState<{ regNo: string; name: string; time: string; status: string }[]>([]);
+  const [qrMessage, setQrMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  // Hardcopy upload state
+  const [hardCopyUploaded, setHardCopyUploaded] = useState(false);
+
+  // Excel state
+  const [uploadedExcelName, setUploadedExcelName] = useState<string | null>(null);
+
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadDocName, setUploadDocName] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, File[]>>({});
@@ -83,11 +101,6 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
   const [reportGenerated, setReportGenerated] = useState(false);
   const [reportDownloadLoading, setReportDownloadLoading] = useState(false);
   const [showOtherDocModal, setShowOtherDocModal] = useState(false);
-  const [attendanceMode, setAttendanceMode] = useState<'online' | 'hardcopy'>('online');
-  const [hardCopyUploaded, setHardCopyUploaded] = useState(false);
-  const [hardCopyStatuses, setHardCopyStatuses] = useState<Record<string, 'P' | 'A'>>(
-    Object.fromEntries(students.map(s => [s.reg, 'A' as const]))
-  );
   const [googleFormLink, setGoogleFormLink] = useState('');
   const [docOrder, setDocOrder] = useState<number[]>(documents.map((_, i) => i));
   const [mergedReportGenerated, setMergedReportGenerated] = useState(false);
@@ -96,6 +109,17 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   const event = sampleEvents.find(e => e.id === eventId) || sampleEvents[0];
+
+  // Fetch attendance from backend API if available
+  useEffect(() => {
+    let isMounted = true;
+    getEventAttendanceApi(eventId).then((data) => {
+      if (isMounted && data && data.records && data.records.length > 0) {
+        setAttendanceRecords(data.records);
+      }
+    });
+    return () => { isMounted = false; };
+  }, [eventId]);
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'overview', label: 'Overview' },
@@ -109,15 +133,71 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
 
   const docPct = event.docStatus === 'Completed' ? 100 : event.docStatus === 'Partial' ? 60 : 20;
 
-  const filteredStudents = students.filter(s => {
-    const matchFilter = attendanceFilter === 'All' || studentStatuses[s.reg] === attendanceFilter;
-    const matchSearch = !attendanceSearch || s.reg.includes(attendanceSearch) || s.name.toLowerCase().includes(attendanceSearch.toLowerCase());
+  const filteredStudents = attendanceRecords.filter(s => {
+    const matchFilter = attendanceFilter === 'All' || s.status === attendanceFilter;
+    const matchSearch = !attendanceSearch || s.regNo.toLowerCase().includes(attendanceSearch.toLowerCase()) || s.studentName.toLowerCase().includes(attendanceSearch.toLowerCase());
     return matchFilter && matchSearch;
   });
 
-  const present = Object.values(studentStatuses).filter(v => v === 'P').length;
-  const absent = Object.values(studentStatuses).filter(v => v === 'A').length;
-  const od = Object.values(studentStatuses).filter(v => v === 'OD').length;
+  const present = attendanceRecords.filter(v => v.status === 'P').length;
+  const absent = attendanceRecords.filter(v => v.status === 'A').length;
+  const od = attendanceRecords.filter(v => v.status === 'OD').length;
+  const totalStudents = attendanceRecords.length;
+  const attendanceRate = totalStudents > 0 ? Math.round(((present + od) / totalStudents) * 100) : 0;
+
+  // Toggle single status
+  const updateStudentStatus = (regNo: string, newStatus: AttendanceStatus) => {
+    setAttendanceRecords(prev =>
+      prev.map(s => s.regNo === regNo ? { ...s, status: newStatus, checkInMethod: 'online' } : s)
+    );
+  };
+
+  // Mark all present
+  const markAllPresent = () => {
+    setAttendanceRecords(prev => prev.map(s => ({ ...s, status: 'P' })));
+  };
+
+  // Save to Backend API & Local State
+  const handleSaveAttendance = async () => {
+    setSavingAttendance(true);
+    const result = await saveEventAttendanceApi(eventId, attendanceRecords);
+    setSavingAttendance(false);
+    setSaveToast('✅ Attendance records saved successfully!');
+    setTimeout(() => setSaveToast(null), 3500);
+  };
+
+  // Student QR check-in simulation
+  const handleQrCheckIn = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cleanReg = qrRegInput.trim().toUpperCase();
+    if (!cleanReg) return;
+
+    const student = attendanceRecords.find(s => s.regNo.toUpperCase() === cleanReg);
+    
+    // Call backend API as well
+    await qrCheckInApi(eventId, cleanReg, student?.studentName);
+
+    if (student) {
+      setAttendanceRecords(prev => prev.map(s => s.regNo.toUpperCase() === cleanReg ? { ...s, status: 'P', checkInMethod: 'qr', markedAt: new Date().toLocaleTimeString() } : s));
+      setQrMessage({ text: `Success! ${student.studentName} (${cleanReg}) checked in.`, type: 'success' });
+      setQrLogs(prev => [{ regNo: cleanReg, name: student.studentName, time: new Date().toLocaleTimeString(), status: 'P' }, ...prev]);
+    } else {
+      // Add new student
+      const newRec: StudentAttendanceRecord = {
+        regNo: cleanReg,
+        studentName: `Student ${cleanReg}`,
+        className: 'III IT A',
+        status: 'P',
+        checkInMethod: 'qr',
+        markedAt: new Date().toLocaleTimeString()
+      };
+      setAttendanceRecords(prev => [...prev, newRec]);
+      setQrMessage({ text: `Checked in new student ${cleanReg}!`, type: 'success' });
+      setQrLogs(prev => [{ regNo: cleanReg, name: `Student ${cleanReg}`, time: new Date().toLocaleTimeString(), status: 'P' }, ...prev]);
+    }
+    setQrRegInput('');
+    setTimeout(() => setQrMessage(null), 3000);
+  };
 
   const handleGenAI = () => {
     setAiLoading(true);
@@ -430,233 +510,529 @@ Attendance: ${event.attendance}%</p>
       )}
 
       {tab === 'attendance' && (
-        <div className="space-y-4">
-          {/* Mode toggle */}
-          <div className="flex gap-3">
-            <button
-              onClick={() => setAttendanceMode('online')}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
-                attendanceMode === 'online'
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                  : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
-              }`}
-            >
-              🖥️ Take Online Attendance
-            </button>
-            <button
-              onClick={() => setAttendanceMode('hardcopy')}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
-                attendanceMode === 'hardcopy'
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                  : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
-              }`}
-            >
-              📋 Upload Hard Copy
-            </button>
+        <div className="space-y-5">
+          {/* Toast Notification */}
+          {saveToast && (
+            <div className="bg-emerald-600 text-white px-4 py-3 rounded-xl text-sm font-semibold shadow-lg flex items-center justify-between animate-fade-in">
+              <span>{saveToast}</span>
+              <button onClick={() => setSaveToast(null)} className="text-white hover:text-emerald-200 font-bold ml-4">✕</button>
+            </div>
+          )}
+
+          {/* Mode Navigation Bar */}
+          <div className="flex gap-2 bg-white rounded-2xl p-2 shadow-sm border border-slate-100 overflow-x-auto">
+            {[
+              { id: 'online', label: '🖥️ Online Roster' },
+              { id: 'qr', label: '📱 QR Check-In & Scanner' },
+              { id: 'hardcopy', label: '📋 Hard Copy Upload' },
+              { id: 'excel', label: '📊 Excel Import/Export' },
+              { id: 'od_generator', label: '📜 OD Pass Generator' },
+            ].map((m) => (
+              <button
+                key={m.id}
+                onClick={() => setAttendanceMode(m.id as any)}
+                className={`flex-shrink-0 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border transition-all ${
+                  attendanceMode === m.id
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
           </div>
 
-          {attendanceMode === 'online' && (
-            <>
-              {/* Stats */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {[
-                  { label: 'Total Students', value: students.length, color: 'text-slate-700' },
-                  { label: 'Present', value: present, color: 'text-green-600' },
-                  { label: 'Absent', value: absent, color: 'text-red-600' },
-                  { label: 'OD', value: od, color: 'text-blue-600' },
-                ].map(s => (
-                  <div key={s.label} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 text-center">
-                    <div className={`text-3xl font-bold font-heading ${s.color}`}>{s.value}</div>
-                    <div className="text-xs text-slate-500 mt-1">{s.label}</div>
-                  </div>
-                ))}
+          {/* Stats Overview Card Row */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            {[
+              { label: 'Total Registered', value: totalStudents, color: 'text-slate-800', bg: 'bg-slate-50' },
+              { label: 'Present (P)', value: present, color: 'text-green-600', bg: 'bg-green-50/50' },
+              { label: 'Absent (A)', value: absent, color: 'text-red-600', bg: 'bg-red-50/50' },
+              { label: 'On-Duty (OD)', value: od, color: 'text-blue-600', bg: 'bg-blue-50/50' },
+              { label: 'Attendance Rate', value: `${attendanceRate}%`, color: 'text-indigo-600', bg: 'bg-indigo-50/50' },
+            ].map((s) => (
+              <div key={s.label} className={`${s.bg} rounded-2xl p-3.5 shadow-sm border border-slate-100 text-center`}>
+                <div className={`text-2xl sm:text-3xl font-extrabold font-heading ${s.color}`}>{s.value}</div>
+                <div className="text-xs text-slate-500 font-medium mt-0.5">{s.label}</div>
               </div>
+            ))}
+          </div>
 
-              <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-                <div className="flex flex-wrap gap-3 mb-4">
+          {/* Mode 1: Online Roster */}
+          {attendanceMode === 'online' && (
+            <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-1 flex-wrap gap-2 min-w-64">
                   <input
                     type="text"
-                    placeholder="Search Reg No or Name..."
+                    placeholder="🔍 Search Reg No or Student Name..."
                     value={attendanceSearch}
-                    onChange={e => setAttendanceSearch(e.target.value)}
-                    className="px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-slate-50 flex-1 min-w-40"
+                    onChange={(e) => setAttendanceSearch(e.target.value)}
+                    className="px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-slate-50 flex-1 min-w-44"
                   />
                   <div className="flex gap-1">
-                    {(['All', 'P', 'A', 'OD', 'Not Marked'] as const).map(f => (
+                    {(['All', 'P', 'A', 'OD'] as const).map((f) => (
                       <button
                         key={f}
-                        onClick={() => setAttendanceFilter(f === 'Not Marked' ? 'All' : f as any)}
-                        className={`px-3 py-2 rounded-xl text-xs font-medium border ${
-                          attendanceFilter === f || (f === 'All' && attendanceFilter === 'All')
-                            ? 'bg-indigo-600 text-white border-indigo-600'
+                        onClick={() => setAttendanceFilter(f)}
+                        className={`px-3 py-2 rounded-xl text-xs font-semibold border ${
+                          attendanceFilter === f
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
                             : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
                         }`}
                       >
-                        {f}
+                        {f === 'All' ? 'All' : f === 'P' ? 'Present' : f === 'A' ? 'Absent' : 'OD'}
                       </button>
                     ))}
                   </div>
-                  <button
-                    onClick={() => setStudentStatuses(Object.fromEntries(students.map(s => [s.reg, 'P' as const])))}
-                    className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-medium"
-                  >
-                    Mark All Present
-                  </button>
-                  <button className="px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-600 hover:bg-slate-50">📤 Upload Excel</button>
-                  <button className="px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-600 hover:bg-slate-50">📥 Template</button>
-                  <button className="px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-600 hover:bg-slate-50">📊 Export</button>
                 </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-100">
-                        <th className="text-left px-3 py-2 text-xs text-slate-500 font-semibold w-8">
-                          <input type="checkbox" className="rounded" />
-                        </th>
-                        {['Reg No', 'Student Name', 'Class/Section', 'Attendance'].map(h => (
-                          <th key={h} className="text-left px-3 py-2 text-xs text-slate-500 font-semibold uppercase tracking-wide">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredStudents.map(s => {
-                        const status = studentStatuses[s.reg];
-                        return (
-                          <tr key={s.reg} className="border-b border-slate-50 hover:bg-slate-50">
-                            <td className="px-3 py-3"><input type="checkbox" className="rounded" /></td>
-                            <td className="px-3 py-3 font-mono text-xs text-slate-600">{s.reg}</td>
-                            <td className="px-3 py-3 font-medium text-slate-800">{s.name}</td>
-                            <td className="px-3 py-3 text-slate-500 text-xs">{s.class}</td>
-                            <td className="px-3 py-3">
-                              <div className="flex gap-1">
-                                {(['P', 'A', 'OD'] as const).map(st => (
-                                  <button
-                                    key={st}
-                                    onClick={() => setStudentStatuses(prev => ({ ...prev, [s.reg]: st }))}
-                                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${
-                                      status === st
-                                        ? st === 'P' ? 'bg-green-600 text-white border-green-600'
-                                          : st === 'A' ? 'bg-red-600 text-white border-red-600'
-                                          : 'bg-blue-600 text-white border-blue-600'
-                                        : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
-                                    }`}
-                                  >
-                                    {st}
-                                  </button>
-                                ))}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="mt-3 text-xs text-slate-400">
-                  Attendance: {Math.round((present / students.length) * 100)}% ({present}/{students.length} present)
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={markAllPresent}
+                    className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-all"
+                  >
+                    ✓ Mark All Present
+                  </button>
+                  <button
+                    onClick={() => setAttendanceRecords((prev) => prev.map((s) => ({ ...s, status: 'A' })))}
+                    className="px-3 py-2 border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold"
+                  >
+                    Clear All
+                  </button>
+                  <button
+                    onClick={handleSaveAttendance}
+                    disabled={savingAttendance}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    {savingAttendance ? 'Saving...' : '💾 Save Attendance'}
+                  </button>
                 </div>
               </div>
-            </>
+
+              <div className="overflow-x-auto rounded-xl border border-slate-100">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-slate-50 border-b border-slate-100 text-xs font-semibold text-slate-500 uppercase">
+                    <tr>
+                      <th className="px-4 py-3">Reg No</th>
+                      <th className="px-4 py-3">Student Name</th>
+                      <th className="px-4 py-3">Class / Section</th>
+                      <th className="px-4 py-3 text-center">Status</th>
+                      <th className="px-4 py-3">Remarks / Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredStudents.map((s) => (
+                      <tr key={s.regNo} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-4 py-3 font-mono font-medium text-slate-700 text-xs">{s.regNo}</td>
+                        <td className="px-4 py-3 font-semibold text-slate-800">{s.studentName}</td>
+                        <td className="px-4 py-3 text-slate-500 text-xs">{s.className}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex justify-center gap-1">
+                            {(['P', 'A', 'OD'] as const).map((st) => (
+                              <button
+                                key={st}
+                                onClick={() => updateStudentStatus(s.regNo, st)}
+                                className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${
+                                  s.status === st
+                                    ? st === 'P'
+                                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                                      : st === 'A'
+                                      ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
+                                      : 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                    : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                                }`}
+                              >
+                                {st}
+                              </button>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="text"
+                            placeholder="Optional remark..."
+                            value={s.remarks || ''}
+                            onChange={(e) =>
+                              setAttendanceRecords((prev) =>
+                                prev.map((item) => (item.regNo === s.regNo ? { ...item, remarks: e.target.value } : item))
+                              )
+                            }
+                            className="px-2.5 py-1 text-xs border border-slate-200 rounded-lg w-full focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-slate-50/50"
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
+                <span>Showing {filteredStudents.length} of {totalStudents} students</span>
+                <span className="font-semibold text-indigo-600">Total Attendance: {attendanceRate}%</span>
+              </div>
+            </div>
           )}
 
+          {/* Mode 2: QR Check-In & Scanner */}
+          {attendanceMode === 'qr' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              {/* Event Display QR Code */}
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 text-center space-y-4">
+                <div>
+                  <h3 className="font-bold font-heading text-slate-800 text-lg">Event QR Code Check-In</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">Project this QR Code on screen for student instant self check-in</p>
+                </div>
+
+                <div className="p-4 bg-indigo-50/60 rounded-2xl inline-block border-2 border-indigo-200 shadow-inner">
+                  {/* Dynamic Visual QR Code */}
+                  <svg className="w-48 h-48 mx-auto" viewBox="0 0 100 100" fill="currentColor">
+                    <rect width="100" height="100" fill="white" rx="8" />
+                    {/* Position patterns */}
+                    <rect x="5" y="5" width="30" height="30" fill="#4F46E5" rx="4" />
+                    <rect x="10" y="10" width="20" height="20" fill="white" rx="2" />
+                    <rect x="14" y="14" width="12" height="12" fill="#4F46E5" rx="1" />
+
+                    <rect x="65" y="5" width="30" height="30" fill="#4F46E5" rx="4" />
+                    <rect x="70" y="10" width="20" height="20" fill="white" rx="2" />
+                    <rect x="74" y="14" width="12" height="12" fill="#4F46E5" rx="1" />
+
+                    <rect x="5" y="65" width="30" height="30" fill="#4F46E5" rx="4" />
+                    <rect x="10" y="70" width="20" height="20" fill="white" rx="2" />
+                    <rect x="14" y="74" width="12" height="12" fill="#4F46E5" rx="1" />
+
+                    {/* Data pattern grid */}
+                    <rect x="42" y="10" width="8" height="8" fill="#4F46E5" />
+                    <rect x="52" y="18" width="8" height="8" fill="#4F46E5" />
+                    <rect x="42" y="42" width="16" height="16" fill="#4F46E5" rx="2" />
+                    <rect x="65" y="42" width="8" height="8" fill="#4F46E5" />
+                    <rect x="10" y="42" width="8" height="8" fill="#4F46E5" />
+                    <rect x="22" y="50" width="8" height="8" fill="#4F46E5" />
+                    <rect x="42" y="68" width="8" height="8" fill="#4F46E5" />
+                    <rect x="52" y="80" width="8" height="8" fill="#4F46E5" />
+                    <rect x="70" y="68" width="16" height="8" fill="#4F46E5" />
+                    <rect x="80" y="80" width="8" height="12" fill="#4F46E5" />
+                  </svg>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs flex items-center justify-between gap-2">
+                  <span className="font-mono text-slate-600 truncate">http://academic-hub.edu/checkin/{event.id}</span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard?.writeText(`http://academic-hub.edu/checkin/${event.id}`);
+                      setSaveToast('Copied QR Check-In link to clipboard!');
+                      setTimeout(() => setSaveToast(null), 2500);
+                    }}
+                    className="px-3 py-1 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700"
+                  >
+                    Copy Link
+                  </button>
+                </div>
+
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-700 font-semibold flex items-center justify-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                  Live Counter: {present} Students Checked In ({attendanceRate}%)
+                </div>
+              </div>
+
+              {/* Student Check-In Simulator / Scanner Input */}
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 space-y-4">
+                <div>
+                  <h3 className="font-bold font-heading text-slate-800 text-lg">Student Scanner Simulator</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">Scan or type Roll / Registration No to verify presence live</p>
+                </div>
+
+                {qrMessage && (
+                  <div className={`p-3 rounded-xl text-xs font-semibold ${qrMessage.type === 'success' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                    {qrMessage.text}
+                  </div>
+                )}
+
+                <form onSubmit={handleQrCheckIn} className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Enter Reg No (e.g. 22IT001, 22IT003)..."
+                    value={qrRegInput}
+                    onChange={(e) => setQrRegInput(e.target.value)}
+                    className="px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-slate-50 flex-1 font-mono uppercase"
+                  />
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-sm"
+                  >
+                    Check In
+                  </button>
+                </form>
+
+                <div>
+                  <h4 className="font-semibold text-xs text-slate-500 uppercase tracking-wider mb-2">Live Check-In Activity Log</h4>
+                  <div className="max-h-56 overflow-y-auto space-y-2 border border-slate-100 rounded-xl p-2 bg-slate-50/50">
+                    {qrLogs.length === 0 ? (
+                      <div className="text-center py-6 text-xs text-slate-400">No student check-ins recorded yet in this session.</div>
+                    ) : (
+                      qrLogs.map((log, index) => (
+                        <div key={`${log.regNo}-${index}`} className="flex items-center justify-between p-2.5 bg-white rounded-lg shadow-2xs border border-slate-100 text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                            <span className="font-mono font-bold text-slate-700">{log.regNo}</span>
+                            <span className="text-slate-600 font-medium">{log.name}</span>
+                          </div>
+                          <span className="text-slate-400 font-mono text-xs">{log.time}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Mode 3: Hard Copy Upload */}
           {attendanceMode === 'hardcopy' && (
             <div className="space-y-4">
               {!hardCopyUploaded ? (
                 <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-100">
-                  <h3 className="font-bold font-heading text-slate-800 mb-2">Upload Signed Attendance Sheet</h3>
+                  <h3 className="font-bold font-heading text-slate-800 mb-2">Upload Signed Physical Attendance Sheet</h3>
                   <p className="text-sm text-slate-500 mb-6">
-                    Upload a scanned copy of the physical attendance sheet. Students who signed will be automatically marked as <span className="text-green-600 font-semibold">Present</span>, and those who did not sign will be marked as <span className="text-red-600 font-semibold">Absent</span>.
+                    Upload a scanned PDF or photo of the paper attendance sheet. Students with signatures will be marked as <span className="text-green-600 font-semibold">Present</span>, and others as <span className="text-red-600 font-semibold">Absent</span>.
                   </p>
                   <div className="border-2 border-dashed border-indigo-200 rounded-2xl p-10 text-center bg-indigo-50/40">
                     <div className="text-5xl mb-4">📋</div>
                     <div className="text-slate-700 font-medium mb-1">Drop the signed attendance sheet here</div>
-                    <div className="text-slate-400 text-sm mb-4">Supported: PDF, JPG, PNG, TIFF</div>
+                    <div className="text-slate-400 text-sm mb-4">Supported formats: PDF, JPG, PNG</div>
                     <button
-                      onClick={() => {
-                        setHardCopyUploaded(true);
-                        setHardCopyStatuses({
-                          '22IT001': 'P', '22IT002': 'P', '22IT003': 'A',
-                          '22IT004': 'P', '22IT005': 'P', '22IT006': 'A',
-                          '22IT007': 'P', '22IT008': 'P',
-                        });
-                      }}
-                      className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold"
+                      onClick={() => setHardCopyUploaded(true)}
+                      className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-md"
                     >
-                      Browse & Upload
+                      Browse & Scan Sheet
                     </button>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="bg-green-50 border border-green-200 rounded-2xl p-4 flex items-center gap-3">
-                    <span className="text-2xl">✅</span>
-                    <div>
-                      <div className="font-semibold text-green-800 text-sm">Hard copy processed successfully</div>
-                      <div className="text-green-600 text-xs mt-0.5">Signed names marked Present · Unsigned marked Absent</div>
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">✅</span>
+                      <div>
+                        <div className="font-semibold text-emerald-800 text-sm">Physical Sheet Processed via Optical Scanner</div>
+                        <div className="text-emerald-600 text-xs">Identified 6 signatures. 2 unsigned students flagged.</div>
+                      </div>
                     </div>
                     <button
                       onClick={() => setHardCopyUploaded(false)}
-                      className="ml-auto text-xs text-slate-500 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-white"
+                      className="text-xs text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-white bg-white font-medium"
                     >
-                      Re-upload
+                      Re-scan Sheet
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-3">
-                    {[
-                      { label: 'Total', value: students.length, color: 'text-slate-700' },
-                      { label: 'Signed (Present)', value: Object.values(hardCopyStatuses).filter(v => v === 'P').length, color: 'text-green-600' },
-                      { label: 'Not Signed (Absent)', value: Object.values(hardCopyStatuses).filter(v => v === 'A').length, color: 'text-red-600' },
-                    ].map(s => (
-                      <div key={s.label} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 text-center">
-                        <div className={`text-3xl font-bold font-heading ${s.color}`}>{s.value}</div>
-                        <div className="text-xs text-slate-500 mt-1">{s.label}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-slate-100 bg-slate-50">
-                          {['Reg No', 'Student Name', 'Class', 'Signature Status'].map(h => (
-                            <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {students.map(s => {
-                          const signed = hardCopyStatuses[s.reg] === 'P';
-                          return (
-                            <tr key={s.reg} className="border-b border-slate-50 hover:bg-slate-50">
-                              <td className="px-4 py-3 font-mono text-xs text-slate-600">{s.reg}</td>
-                              <td className="px-4 py-3 font-medium text-slate-800">{s.name}</td>
-                              <td className="px-4 py-3 text-slate-500 text-xs">{s.class}</td>
-                              <td className="px-4 py-3">
-                                <div className="flex items-center gap-2">
-                                  <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${signed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                                    {signed ? '✓ Signed — Present' : '✗ Not Signed — Absent'}
+                  <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-3">
+                    <h4 className="font-bold text-slate-800 text-sm">Verified Signature Roster</h4>
+                    <div className="overflow-x-auto border border-slate-100 rounded-xl">
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-50 text-xs font-semibold text-slate-500 uppercase">
+                          <tr>
+                            <th className="px-4 py-2.5 text-left">Reg No</th>
+                            <th className="px-4 py-2.5 text-left">Student Name</th>
+                            <th className="px-4 py-2.5 text-left">Class</th>
+                            <th className="px-4 py-2.5 text-center">Detected Signature</th>
+                            <th className="px-4 py-2.5 text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {attendanceRecords.map((s) => {
+                            const isPresent = s.status === 'P' || s.status === 'OD';
+                            return (
+                              <tr key={s.regNo} className="hover:bg-slate-50">
+                                <td className="px-4 py-3 font-mono text-xs text-slate-700">{s.regNo}</td>
+                                <td className="px-4 py-3 font-medium text-slate-800">{s.studentName}</td>
+                                <td className="px-4 py-3 text-xs text-slate-500">{s.className}</td>
+                                <td className="px-4 py-3 text-center">
+                                  <span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${isPresent ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                    {isPresent ? '✓ Signed — Present' : '✗ Unsigned — Absent'}
                                   </span>
+                                </td>
+                                <td className="px-4 py-3 text-right">
                                   <button
-                                    onClick={() => setHardCopyStatuses(prev => ({ ...prev, [s.reg]: prev[s.reg] === 'P' ? 'A' : 'P' }))}
-                                    className="text-xs text-slate-400 hover:text-indigo-600 underline"
+                                    onClick={() => updateStudentStatus(s.regNo, isPresent ? 'A' : 'P')}
+                                    className="text-xs text-indigo-600 hover:text-indigo-800 underline font-medium"
                                   >
-                                    Override
+                                    Override Status
                                   </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <button
+                      onClick={handleSaveAttendance}
+                      className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-md"
+                    >
+                      💾 Confirm & Save Hard Copy Attendance
+                    </button>
                   </div>
-                  <button className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium">
-                    💾 Save Hard Copy Attendance
-                  </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Mode 4: Excel Import & Export */}
+          {attendanceMode === 'excel' && (
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 space-y-6">
+              <div>
+                <h3 className="font-bold font-heading text-slate-800 text-lg">Excel / CSV Attendance Data Management</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Import bulk student attendance spreadsheets or export formatted records</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* Download Template & Export */}
+                <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
+                  <h4 className="font-semibold text-sm text-slate-800">Export & Templates</h4>
+                  <p className="text-xs text-slate-500">Download formatted blank spreadsheet templates or export the current event attendance report.</p>
+                  
+                  <div className="flex flex-col gap-2.5">
+                    <button
+                      onClick={() => {
+                        const csvContent = "data:text/csv;charset=utf-8,RegNo,StudentName,Class,Status,Remarks\n22IT001,Arun Kumar M,III IT A,P,\n22IT002,Bhavya S,III IT A,P,\n";
+                        const encodedUri = encodeURI(csvContent);
+                        const link = document.createElement("a");
+                        link.setAttribute("href", encodedUri);
+                        link.setAttribute("download", `Attendance_Template_${event.id}.csv`);
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                      }}
+                      className="px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-2xs"
+                    >
+                      📥 Download Blank Template (.csv)
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        const header = "RegNo,StudentName,Class,Status,Remarks\n";
+                        const rows = attendanceRecords.map(r => `${r.regNo},"${r.studentName}","${r.className}",${r.status},"${r.remarks || ''}"`).join("\n");
+                        const blob = new Blob([header + rows], { type: 'text/csv' });
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.setAttribute('href', url);
+                        a.setAttribute('download', `Attendance_Report_${event.id}_${event.name.replace(/\s+/g, '_')}.csv`);
+                        a.click();
+                      }}
+                      className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-sm"
+                    >
+                      📊 Export Attendance Sheet CSV
+                    </button>
+                  </div>
+                </div>
+
+                {/* Import Spreadsheet */}
+                <div className="p-5 bg-indigo-50/40 rounded-2xl border border-indigo-100 space-y-4">
+                  <h4 className="font-semibold text-sm text-indigo-900">Upload Attendance File</h4>
+                  <p className="text-xs text-slate-500">Upload `.xlsx` or `.csv` spreadsheet to automatically update attendance statuses.</p>
+                  
+                  <div className="border-2 border-dashed border-indigo-200 rounded-xl p-5 text-center bg-white">
+                    <div className="text-3xl mb-2">📤</div>
+                    {uploadedExcelName ? (
+                      <div className="text-xs font-bold text-emerald-700 mb-2">Uploaded: {uploadedExcelName}</div>
+                    ) : (
+                      <div className="text-xs text-slate-600 mb-2 font-medium">Select Excel / CSV file from your device</div>
+                    )}
+                    <label className="px-4 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-xl cursor-pointer hover:bg-indigo-700 inline-block shadow-2xs">
+                      Browse File
+                      <input
+                        type="file"
+                        accept=".csv,.xlsx,.xls"
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files?.[0]) {
+                            setUploadedExcelName(e.target.files[0].name);
+                            setSaveToast(`Imported ${e.target.files[0].name} successfully!`);
+                            setTimeout(() => setSaveToast(null), 3000);
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Mode 5: On-Duty (OD) Recommendation Pass Generator */}
+          {attendanceMode === 'od_generator' && (
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 space-y-6">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                <div>
+                  <h3 className="font-bold font-heading text-slate-800 text-lg">On-Duty (OD) Leave Recommendation Generator</h3>
+                  <p className="text-xs text-slate-500">Generate printable OD recommendation letter for HOD & Principal sign-off</p>
+                </div>
+                <button
+                  onClick={() => window.print()}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm"
+                >
+                  🖨️ Print / Save PDF
+                </button>
+              </div>
+
+              {/* Formal Document Box */}
+              <div className="p-8 border-2 border-slate-300 rounded-2xl bg-white space-y-6 max-w-3xl mx-auto shadow-inner text-slate-800">
+                {/* Letterhead Header */}
+                <div className="text-center border-b-2 border-indigo-600 pb-4 space-y-1">
+                  <h2 className="text-lg font-bold font-heading uppercase text-indigo-900 tracking-wider">Academic Event Hub — Department of {event.department}</h2>
+                  <p className="text-xs text-slate-500">Official Student On-Duty (OD) Recommendation Form</p>
+                  <p className="text-xs text-slate-400 font-mono">Ref: OD/{event.academicYear}/{event.id}</p>
+                </div>
+
+                {/* Event Summary */}
+                <div className="bg-slate-50 p-4 rounded-xl text-xs space-y-1.5 border border-slate-200">
+                  <div><strong>Event Name:</strong> {event.name}</div>
+                  <div><strong>Event Date:</strong> {event.date} ({event.startTime} - {event.endTime})</div>
+                  <div><strong>Venue:</strong> {event.venue}</div>
+                  <div><strong>Faculty Coordinator:</strong> {typeof event.coordinator === 'string' ? event.coordinator : event.coordinator || 'Department Faculty'}</div>
+                </div>
+
+                {/* Recommended Students List */}
+                <div className="space-y-2">
+                  <h4 className="font-bold text-xs uppercase text-slate-700 tracking-wide">List of Recommended Students (Present / On-Duty)</h4>
+                  <table className="w-full text-xs text-left border border-slate-300 border-collapse">
+                    <thead className="bg-slate-100 text-slate-700">
+                      <tr>
+                        <th className="border border-slate-300 px-3 py-2">S.No</th>
+                        <th className="border border-slate-300 px-3 py-2">Reg No</th>
+                        <th className="border border-slate-300 px-3 py-2">Student Name</th>
+                        <th className="border border-slate-300 px-3 py-2">Class</th>
+                        <th className="border border-slate-300 px-3 py-2 text-center">OD Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {attendanceRecords.filter(s => s.status === 'OD' || s.status === 'P').map((s, idx) => (
+                        <tr key={s.regNo}>
+                          <td className="border border-slate-300 px-3 py-2 text-center">{idx + 1}</td>
+                          <td className="border border-slate-300 px-3 py-2 font-mono font-semibold">{s.regNo}</td>
+                          <td className="border border-slate-300 px-3 py-2">{s.studentName}</td>
+                          <td className="border border-slate-300 px-3 py-2">{s.className}</td>
+                          <td className="border border-slate-300 px-3 py-2 text-center font-bold text-blue-700">
+                            {s.status === 'OD' ? 'On-Duty (Approved)' : 'Present (Attended)'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Signatures */}
+                <div className="grid grid-cols-2 gap-8 pt-10 text-xs">
+                  <div className="text-center border-t border-slate-300 pt-2 font-semibold text-slate-700">
+                    Faculty Coordinator Signature
+                  </div>
+                  <div className="text-center border-t border-slate-300 pt-2 font-semibold text-slate-700 flex flex-col items-center">
+                    <span className="text-emerald-600 font-bold text-xs mb-1">✓ Digitally Recommended</span>
+                    HOD / Principal Approval
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
