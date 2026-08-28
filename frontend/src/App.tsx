@@ -165,6 +165,7 @@ export default function App() {
         return (
           <AllEvents
             navigate={navigate}
+            academicYear={academicYear}
           />
         );
 
@@ -172,6 +173,7 @@ export default function App() {
         return (
           <JointEvents
             navigate={navigate}
+            academicYear={academicYear}
           />
         );
 
@@ -179,6 +181,7 @@ export default function App() {
         return (
           <CalendarPage
             navigate={navigate}
+            academicYear={academicYear}
           />
         );
 
@@ -193,6 +196,7 @@ export default function App() {
         return (
           <AllEvents
             navigate={navigate}
+            academicYear={academicYear}
             title="Documentation"
           />
         );

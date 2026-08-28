@@ -3,6 +3,7 @@ import type { Page, StudentAttendanceRecord, AttendanceStatus } from '../types';
 import { sampleEvents } from '../data/sampleData';
 import { eventTypeColors } from './Dashboard';
 import { getEventAttendanceApi, saveEventAttendanceApi, qrCheckInApi } from '../services/api';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
 interface EventDetailsProps {
   eventId: string;
@@ -93,14 +94,17 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
 
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadDocName, setUploadDocName] = useState('');
+  const [uploadedFiles, setUploadedFiles] = useState<Record<string, File[]>>({});
   const [aiLoading, setAiLoading] = useState(false);
   const [aiGenerated, setAiGenerated] = useState(false);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportGenerated, setReportGenerated] = useState(false);
+  const [reportDownloadLoading, setReportDownloadLoading] = useState(false);
   const [showOtherDocModal, setShowOtherDocModal] = useState(false);
   const [googleFormLink, setGoogleFormLink] = useState('');
   const [docOrder, setDocOrder] = useState<number[]>(documents.map((_, i) => i));
   const [mergedReportGenerated, setMergedReportGenerated] = useState(false);
+  const [mergedReportLoading, setMergedReportLoading] = useState(false);
   const [showArrangeStep, setShowArrangeStep] = useState(true);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
@@ -204,6 +208,115 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
     setTimeout(() => { setReportLoading(false); setReportGenerated(true); }, 3000);
   };
 
+  const getReportHtml = () => `<!doctype html>
+<html><head><meta charset="utf-8"><title>${event.name} - Event Report</title>
+<style>body{font-family:Arial,sans-serif;max-width:850px;margin:40px auto;color:#1e293b;line-height:1.6}h1{text-align:center;color:#3730a3}h2{border-bottom:1px solid #cbd5e1;padding-bottom:6px}p{white-space:pre-line}.meta{text-align:center;color:#64748b;border-bottom:2px solid #3730a3;padding-bottom:20px}</style>
+</head><body><h1>XYZ COLLEGE OF ENGINEERING AND TECHNOLOGY</h1>
+<div class="meta">Department of ${event.department === 'IT' ? 'Information Technology' : event.department === 'AIDS' ? 'Artificial Intelligence and Data Science' : 'IT & AIDS'}<br>
+<strong>EVENT REPORT - ${event.type.toUpperCase()}</strong><br>${event.name}<br>${event.date} | ${event.startTime}-${event.endTime} | ${event.venue}</div>
+<h2>1. Event Overview</h2><p>A ${event.type} titled "${event.name}" was organized by the ${event.department} department on ${event.date} at ${event.venue}. The event was conducted in ${event.mode} mode.</p>
+<h2>2. Objective</h2><p>${event.objective}</p>
+<h2>3. Resource Person</h2><p>Name: ${event.resourcePerson.name}
+Designation: ${event.resourcePerson.designation}
+Organization: ${event.resourcePerson.organization}
+Contact: ${event.resourcePerson.contact}
+Email: ${event.resourcePerson.email}</p>
+<h2>4. Participation and Attendance</h2><p>Target students: ${event.targetStudents}
+Expected participants: ${event.expectedParticipants}
+Actual participants: ${event.actualParticipants}
+Attendance: ${event.attendance}%</p>
+<h2>5. Feedback</h2><p>Average feedback score: ${event.feedbackScore}/5</p>
+<h2>6. Description</h2><p>${event.description}</p>
+<p><strong>Event Coordinator:</strong> ${event.coordinator}</p></body></html>`;
+
+  const handlePreviewReport = () => {
+    const preview = window.open('', '_blank');
+    if (!preview) return;
+    preview.document.write(getReportHtml());
+    preview.document.close();
+  };
+
+  const handlePrintReport = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    printWindow.document.write(getReportHtml());
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
+
+  const createEventReportPdf = async () => {
+    const pdf = await PDFDocument.create();
+    const page = pdf.addPage();
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    const lines = [
+      'ACADEMIC EVENT HUB - EVENT REPORT', event.name,
+      `Department: ${event.department}`, `Date: ${event.date} | Venue: ${event.venue}`,
+      '', 'Objective', event.objective, '', 'Description', event.description,
+      '', `Participants: ${event.actualParticipants}`, `Attendance: ${event.attendance}%`, `Feedback: ${event.feedbackScore}/5`,
+      '', `Coordinator: ${event.coordinator}`
+    ];
+    lines.forEach((line, index) => page.drawText(line.slice(0, 105), {
+      x: 50, y: 770 - index * 25, size: index === 0 ? 18 : 11, font,
+      color: index === 0 ? rgb(0.22, 0.19, 0.51) : rgb(0.12, 0.16, 0.23)
+    }));
+    return pdf;
+  };
+
+  const downloadPdf = async (pdf: PDFDocument, filename: string) => {
+    const bytes = await pdf.save();
+    const objectUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  };
+
+  const handleDownloadReport = async () => {
+    setReportDownloadLoading(true);
+    try {
+      const pdf = await createEventReportPdf();
+      await downloadPdf(pdf, `${event.id}-event-report.pdf`);
+    } catch (error) {
+      console.error('Report download failed:', error);
+      window.alert('The report could not be downloaded. Please try again.');
+    } finally {
+      setReportDownloadLoading(false);
+    }
+  };
+
+  const handleDownloadMergedReport = async () => {
+    setMergedReportLoading(true);
+    try {
+      const mergedPdf = await createEventReportPdf();
+      for (const index of docOrder) {
+        for (const file of uploadedFiles[documents[index].name] || []) {
+          const bytes = await file.arrayBuffer();
+          if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+            const sourcePdf = await PDFDocument.load(bytes);
+            const pages = await mergedPdf.copyPages(sourcePdf, sourcePdf.getPageIndices());
+            pages.forEach(page => mergedPdf.addPage(page));
+          } else if (file.type === 'image/jpeg' || file.type === 'image/png') {
+            const image = file.type === 'image/png' ? await mergedPdf.embedPng(bytes) : await mergedPdf.embedJpg(bytes);
+            const page = mergedPdf.addPage([595, 842]);
+            const scale = Math.min(500 / image.width, 740 / image.height);
+            page.drawImage(image, { x: (595 - image.width * scale) / 2, y: (842 - image.height * scale) / 2, width: image.width * scale, height: image.height * scale });
+          } else {
+            const page = mergedPdf.addPage();
+            const font = await mergedPdf.embedFont(StandardFonts.Helvetica);
+            page.drawText(`${file.name} must be converted to PDF before it can be merged.`, { x: 50, y: 750, size: 11, font });
+          }
+        }
+      }
+      await downloadPdf(mergedPdf, `${event.id}-merged-report.pdf`);
+    } finally {
+      setMergedReportLoading(false);
+    }
+  };
+
   return (
     <div className="p-6 space-y-5">
       {/* Header */}
@@ -280,7 +393,7 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
                   ['Department', event.department === 'BOTH' ? 'BOTH – IT+AIDS' : event.department],
                   ['Academic Year', event.academicYear],
                   ['Student Year(s)', event.targetYears?.length ? event.targetYears.map(year => `Year ${year}`).join(', ') : event.targetStudents],
-                  ['Semester', `Semester ${event.semester}`],
+                  ['Semester', event.semester === 'I' ? 'Odd semester' : 'Even semester'],
                   ['Date', event.date],
                   ['Date To', event.dateTo || event.date],
                   ['Time', `${event.startTime} – ${event.endTime}`],
@@ -1199,9 +1312,15 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
             </button>
             {reportGenerated && (
               <>
-                <button className="px-4 py-2 border border-indigo-200 text-indigo-600 rounded-xl text-sm font-medium hover:bg-indigo-50">👁️ Preview Report</button>
-                <button className="px-4 py-2 border border-green-200 text-green-600 rounded-xl text-sm font-medium hover:bg-green-50">📥 Download PDF</button>
-                <button className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl text-sm font-medium hover:bg-slate-50">🖨️ Print</button>
+                <button onClick={handlePreviewReport} className="px-4 py-2 border border-indigo-200 text-indigo-600 rounded-xl text-sm font-medium hover:bg-indigo-50">👁️ Preview Report</button>
+                <button
+                  onClick={handleDownloadReport}
+                  disabled={reportDownloadLoading}
+                  className="px-4 py-2 border border-green-200 text-green-600 rounded-xl text-sm font-medium hover:bg-green-50 disabled:opacity-60"
+                >
+                  {reportDownloadLoading ? 'Preparing PDF...' : '📥 Download Report'}
+                </button>
+                <button onClick={handlePrintReport} className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl text-sm font-medium hover:bg-slate-50">🖨️ Print</button>
                 <button onClick={handleGenAI} className="px-4 py-2 border border-violet-200 text-violet-600 rounded-xl text-sm font-medium hover:bg-violet-50">✨ Regenerate with AI</button>
               </>
             )}
@@ -1346,10 +1465,11 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
             <div className="space-y-4">
               <div className="flex gap-3 flex-wrap">
                 <button
-                  onClick={() => { setMergedReportGenerated(true); }}
+                  onClick={async () => { setMergedReportGenerated(true); await handleDownloadMergedReport(); }}
+                  disabled={mergedReportLoading}
                   className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium"
                 >
-                  📄 Generate Merged PDF
+                  {mergedReportLoading ? 'Generating PDF...' : '📄 Generate Merged PDF'}
                 </button>
                 <button
                   onClick={() => setShowArrangeStep(true)}
@@ -1359,7 +1479,7 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
                 </button>
                 {mergedReportGenerated && (
                   <>
-                    <button className="px-4 py-2 border border-green-200 text-green-600 rounded-xl text-sm font-medium hover:bg-green-50">📥 Download Merged PDF</button>
+                    <button onClick={handleDownloadMergedReport} className="px-4 py-2 border border-green-200 text-green-600 rounded-xl text-sm font-medium hover:bg-green-50">📥 Download Merged Report</button>
                     <button className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl text-sm font-medium hover:bg-slate-50">🖨️ Print</button>
                   </>
                 )}
@@ -1436,12 +1556,20 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
                 <div className="text-2xl mb-2">📁</div>
                 <div className="text-sm text-slate-600">Drop files here or click to browse</div>
                 <div className="text-xs text-slate-400 mt-1">PDF, DOC, XLSX, JPG supported</div>
-                <input type="file" multiple className="hidden" />
-                <button className="mt-3 px-4 py-1.5 bg-indigo-600 text-white text-xs rounded-xl">Browse Files</button>
+                <input id="event-document-files" type="file" accept=".pdf,.jpg,.jpeg,.png,.xlsx,.doc,.docx" multiple className="hidden" onChange={e => setUploadFiles(Array.from(e.target.files || []))} />
+                <label htmlFor="event-document-files" className="inline-block mt-3 px-4 py-1.5 bg-indigo-600 text-white text-xs rounded-xl cursor-pointer">Browse Files</label>
+                {uploadFiles.length > 0 && <div className="text-xs text-green-600 mt-2">{uploadFiles.length} file(s) selected</div>}
               </div>
               <div className="flex gap-3">
                 <button onClick={() => setShowUploadModal(false)} className="flex-1 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
-                <button onClick={() => setShowUploadModal(false)} className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium">Upload Documents</button>
+                <button
+                  onClick={() => {
+                    if (uploadFiles.length > 0) setUploadedFiles(previous => ({ ...previous, [uploadDocName]: uploadFiles }));
+                    setUploadFiles([]);
+                    setShowUploadModal(false);
+                  }}
+                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium"
+                >Upload Documents</button>
               </div>
             </div>
           </div>

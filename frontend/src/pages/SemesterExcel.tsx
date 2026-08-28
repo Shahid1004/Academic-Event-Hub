@@ -82,8 +82,8 @@ export default function SemesterExcel() {
           </select>
           <select value={semFilter} onChange={e => setSemFilter(e.target.value)} className="px-3 py-2 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400">
             <option value="ALL">All Semesters</option>
-            <option value="I">Semester I</option>
-            <option value="II">Semester II</option>
+            <option value="I">Odd semester</option>
+            <option value="II">Even semester</option>
           </select>
           <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className="px-3 py-2 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400">
             <option value="ALL">All Departments</option>
@@ -121,7 +121,7 @@ export default function SemesterExcel() {
                 <tr key={e.id} className={`border-b border-slate-100 hover:bg-indigo-50/30 ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}>
                   <td className="px-3 py-2 text-slate-500 border-r border-slate-100">{i + 1}</td>
                   <td className="px-3 py-2 border-r border-slate-100">{e.academicYear}</td>
-                  <td className="px-3 py-2 border-r border-slate-100">Sem {e.semester}</td>
+                  <td className="px-3 py-2 border-r border-slate-100">{e.semester === 'I' ? 'Odd semester' : 'Even semester'}</td>
                   <td className="px-3 py-2 border-r border-slate-100">
                     <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${e.department === 'IT' ? 'bg-blue-100 text-blue-700' : e.department === 'AIDS' ? 'bg-violet-100 text-violet-700' : 'bg-amber-100 text-amber-700'}`}>{e.department}</span>
                   </td>

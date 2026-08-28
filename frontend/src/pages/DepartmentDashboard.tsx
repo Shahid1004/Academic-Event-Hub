@@ -125,7 +125,7 @@ export default function DepartmentDashboard({ dept, navigate }: DeptDashboardPro
           return (
             <div key={sem} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold font-heading text-slate-800">Semester {sem}</h3>
+                <h3 className="font-bold font-heading text-slate-800">{sem === 'I' ? 'Odd semester' : 'Even semester'}</h3>
                 <span className="text-sm font-bold text-indigo-600">{semEvents.length} events</span>
               </div>
               <div className="space-y-2">

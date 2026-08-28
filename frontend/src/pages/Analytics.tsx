@@ -42,8 +42,8 @@ export default function Analytics() {
   ];
 
   const semesterData = [
-    { semester: 'Sem I', IT: sampleEvents.filter(e => e.department === 'IT' && e.semester === 'I').length, AIDS: sampleEvents.filter(e => e.department === 'AIDS' && e.semester === 'I').length, BOTH: sampleEvents.filter(e => e.department === 'BOTH' && e.semester === 'I').length },
-    { semester: 'Sem II', IT: sampleEvents.filter(e => e.department === 'IT' && e.semester === 'II').length, AIDS: sampleEvents.filter(e => e.department === 'AIDS' && e.semester === 'II').length, BOTH: sampleEvents.filter(e => e.department === 'BOTH' && e.semester === 'II').length },
+    { semester: 'Odd semester', IT: sampleEvents.filter(e => e.department === 'IT' && e.semester === 'I').length, AIDS: sampleEvents.filter(e => e.department === 'AIDS' && e.semester === 'I').length, BOTH: sampleEvents.filter(e => e.department === 'BOTH' && e.semester === 'I').length },
+    { semester: 'Even semester', IT: sampleEvents.filter(e => e.department === 'IT' && e.semester === 'II').length, AIDS: sampleEvents.filter(e => e.department === 'AIDS' && e.semester === 'II').length, BOTH: sampleEvents.filter(e => e.department === 'BOTH' && e.semester === 'II').length },
   ];
 
   const stats = [
