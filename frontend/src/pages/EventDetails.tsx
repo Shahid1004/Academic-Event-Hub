@@ -1,3 +1,7 @@
+import { useEffect, useState } from 'react';
+import type { Page } from '../types';
+import type { EventRecord } from '../types';
+import { getEvents } from '../services/api';
 import { useState, useEffect } from 'react';
 import type { Page, StudentAttendanceRecord, AttendanceStatus } from '../types';
 import { sampleEvents } from '../data/sampleData';
@@ -107,8 +111,34 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
   const [mergedReportLoading, setMergedReportLoading] = useState(false);
   const [showArrangeStep, setShowArrangeStep] = useState(true);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [event, setEvent] = useState<EventRecord | null>(null);
+  const [eventLoading, setEventLoading] = useState(true);
+  const [eventError, setEventError] = useState(false);
 
-  const event = sampleEvents.find(e => e.id === eventId) || sampleEvents[0];
+  useEffect(() => {
+    setEventLoading(true);
+    setEventError(false);
+    getEvents()
+      .then(events => {
+        setEvent(events.find(item => item.id === eventId) || null);
+        setEventError(!events.some(item => item.id === eventId));
+      })
+      .catch(() => {
+        setEvent(null);
+        setEventError(true);
+      })
+      .finally(() => setEventLoading(false));
+  }, [eventId]);
+
+  if (eventLoading) return <div className="p-6 text-slate-500">Loading event details...</div>;
+  if (!event) return (
+    <div className="p-6 space-y-3">
+      <button onClick={() => navigate('all-events')} className="text-sm text-indigo-600 hover:text-indigo-800">← Back to Events</button>
+      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        {eventError ? 'This event could not be loaded. Please return to Events and try again.' : 'Event not found.'}
+      </div>
+    </div>
+  );
 
   // Fetch attendance from backend API if available
   useEffect(() => {
@@ -401,7 +431,7 @@ Attendance: ${event.attendance}%</p>
                   ['Mode', event.mode],
                   ['Sponsored By', event.sponsoredBy || '—'],
                   ['Target Students', event.targetStudents],
-                  ['Expected Participants', event.expectedParticipants.toString()],
+                  ['Expected Participants', String(event.expectedParticipants ?? 0)],
                   ['Actual Participants', event.actualParticipants > 0 ? event.actualParticipants.toString() : 'N/A'],
                 ].map(([label, value]) => (
                   <div key={label}>
@@ -443,7 +473,7 @@ Attendance: ${event.attendance}%</p>
           <div className="space-y-4">
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
               <h3 className="font-bold font-heading text-slate-800 mb-3">Faculty Coordinators</h3>
-              {[...(event.assignedFaculty || []), ...(event.assignedFaculty?.length ? [] : [event.coordinator, ...event.additionalCoordinators])].map((coordinator, index) => {
+              {[...(event.assignedFaculty || []), ...(event.assignedFaculty?.length ? [] : [event.coordinator, ...(event.additionalCoordinators || [])])].filter(Boolean).map((coordinator, index) => {
                 const name = typeof coordinator === 'string' ? coordinator : `${coordinator.name}${coordinator.designation ? ` (${coordinator.designation})` : ''}`;
                 return (
                 <div key={`${name}-${index}`} className="flex items-center gap-3 mb-2">

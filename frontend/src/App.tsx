@@ -150,6 +150,7 @@ export default function App() {
           <DepartmentDashboard
             dept="IT"
             navigate={navigate}
+            academicYear={academicYear}
           />
         );
 
@@ -158,6 +159,7 @@ export default function App() {
           <DepartmentDashboard
             dept="AIDS"
             navigate={navigate}
+            academicYear={academicYear}
           />
         );
 
@@ -189,6 +191,7 @@ export default function App() {
         return (
           <MyAssignedEvents
             navigate={navigate}
+            profile={profile}
           />
         );
 
@@ -202,10 +205,10 @@ export default function App() {
         );
 
       case 'reports':
-        return <Reports />;
+        return <Reports academicYear={academicYear} />;
 
       case 'analytics':
-        return <Analytics />;
+        return <Analytics academicYear={academicYear} />;
 
       case 'settings':
         return <Settings currentUserRole={userRole} profile={profile} settings={settings} onProfileChange={(nextProfile: UserProfile) => {
@@ -230,9 +233,10 @@ export default function App() {
         );
 
       case 'semester-excel':
-        return <SemesterExcel />;
+        return <SemesterExcel academicYear={academicYear} />;
 
       case 'user-management':
+        if (userRole === 'coordinator') return <Dashboard navigate={navigate} academicYear={academicYear} onAcademicYearsChange={setAcademicYears} />;
         return (
           <UserManagement
             currentUserRole={userRole}

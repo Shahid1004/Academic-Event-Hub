@@ -73,7 +73,7 @@ export default function Settings({ currentUserRole, profile, settings, onProfile
     { id: 'event-types', label: 'Event Types', icon: '🎯' },
     { id: 'doc-categories', label: 'Document Categories', icon: '📁' },
     { id: 'notifications', label: 'Notifications', icon: '🔔' },
-    { id: 'users', label: 'User Management', icon: '👥' },
+    ...(currentUserRole !== 'coordinator' ? [{ id: 'users' as SettingsTab, label: 'User Management', icon: '👥' }] : []),
     { id: 'system', label: 'Appearance', icon: '⚙️' }
   ];
   const inputCls = 'w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-slate-50';
@@ -112,7 +112,7 @@ export default function Settings({ currentUserRole, profile, settings, onProfile
 
           {tab === 'notifications' && <div className={cardCls}><h3 className="font-bold font-heading text-slate-800">Notification Settings</h3>{Object.entries(settings.notifications).map(([key, checked]) => <label key={key} className="flex items-center justify-between py-2 border-b border-slate-100"><span className="text-sm text-slate-700">{notificationLabels[key] || key}</span><input type="checkbox" checked={checked} onChange={event => saveSettings({ notifications: { ...settings.notifications, [key]: event.target.checked } })} className="h-4 w-4 accent-indigo-600" /></label>)}</div>}
 
-          {tab === 'users' && <UserManagement currentUserRole={currentUserRole} />}
+          {tab === 'users' && currentUserRole !== 'coordinator' && <UserManagement currentUserRole={currentUserRole} />}
 
           {tab === 'system' && <div className={cardCls}><h3 className="font-bold font-heading text-slate-800">Appearance</h3><div><label className="block text-xs font-medium text-slate-600 mb-1">Color mode</label><select value={settings.theme.mode} onChange={event => saveSettings({ theme: { ...settings.theme, mode: event.target.value as 'light' | 'dark' } })} className={inputCls}><option value="light">Light</option><option value="dark">Dark</option></select></div><div><label className="block text-xs font-medium text-slate-600 mb-1">Contrast</label><select value={settings.theme.contrast} onChange={event => saveSettings({ theme: { ...settings.theme, contrast: event.target.value as 'normal' | 'high' } })} className={inputCls}><option value="normal">Normal contrast</option><option value="high">High contrast</option></select></div><div><label className="block text-xs font-medium text-slate-600 mb-1">Accent color</label><div className="flex gap-2">{(['indigo', 'blue', 'teal', 'rose'] as const).map(accent => <button key={accent} onClick={() => saveSettings({ theme: { ...settings.theme, accent } })} className={`w-9 h-9 rounded-full bg-${accent}-600 ring-2 ${settings.theme.accent === accent ? 'ring-slate-900' : 'ring-transparent'}`} aria-label={`${accent} accent`} />)}</div></div></div>}
         </div>
