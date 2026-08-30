@@ -1,12 +1,8 @@
 import { useEffect, useState } from 'react';
-import type { Page } from '../types';
-import type { EventRecord } from '../types';
-import { getEvents } from '../services/api';
-import { useState, useEffect } from 'react';
-import type { Page, StudentAttendanceRecord, AttendanceStatus } from '../types';
+import type { Page, EventRecord, StudentAttendanceRecord, AttendanceStatus } from '../types';
+import { getEvents, getEventAttendanceApi, saveEventAttendanceApi, qrCheckInApi } from '../services/api';
 import { sampleEvents } from '../data/sampleData';
 import { eventTypeColors } from './Dashboard';
-import { getEventAttendanceApi, saveEventAttendanceApi, qrCheckInApi } from '../services/api';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
 interface EventDetailsProps {
@@ -98,6 +94,7 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
 
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadDocName, setUploadDocName] = useState('');
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, File[]>>({});
   const [aiLoading, setAiLoading] = useState(false);
   const [aiGenerated, setAiGenerated] = useState(false);
@@ -286,16 +283,20 @@ Attendance: ${event.attendance}%</p>
       '', `Participants: ${event.actualParticipants}`, `Attendance: ${event.attendance}%`, `Feedback: ${event.feedbackScore}/5`,
       '', `Coordinator: ${event.coordinator}`
     ];
-    lines.forEach((line, index) => page.drawText(line.slice(0, 105), {
-      x: 50, y: 770 - index * 25, size: index === 0 ? 18 : 11, font,
-      color: index === 0 ? rgb(0.22, 0.19, 0.51) : rgb(0.12, 0.16, 0.23)
-    }));
+    lines.forEach((line, index) => {
+      if (line) {
+        page.drawText(line.slice(0, 105), {
+          x: 50, y: 770 - index * 25, size: index === 0 ? 18 : 11, font,
+          color: index === 0 ? rgb(0.22, 0.19, 0.51) : rgb(0.12, 0.16, 0.23)
+        });
+      }
+    });
     return pdf;
   };
 
   const downloadPdf = async (pdf: PDFDocument, filename: string) => {
     const bytes = await pdf.save();
-    const objectUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    const objectUrl = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
     const link = document.createElement('a');
     link.href = objectUrl;
     link.download = filename;

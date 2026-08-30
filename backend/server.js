@@ -9,6 +9,7 @@ require("dotenv").config({
 
 const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
+const departmentRoutes = require("./routes/departmentRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const eventRoutes = require("./routes/eventRoutes");
 const settingsRoutes = require("./routes/settingsRoutes");
