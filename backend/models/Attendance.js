@@ -26,16 +26,16 @@ const attendanceSchema = new mongoose.Schema(
     department: {
       type: String,
       trim: true,
-      default: "",
+      default: "-",
     },
     status: {
       type: String,
-      enum: ["P", "A", "OD"],
-      default: "P",
+      enum: ["P", "A", "OD", ""],
+      default: "",
     },
     checkInMethod: {
       type: String,
-      enum: ["online", "qr", "hardcopy", "excel"],
+      enum: ["online", "qr", "hardcopy", "excel", "import", "manual"],
       default: "online",
     },
     markedAt: {

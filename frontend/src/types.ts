@@ -147,10 +147,11 @@ export interface AppSettings {
   theme: { mode: 'light' | 'dark'; contrast: 'normal' | 'high'; accent: 'indigo' | 'blue' | 'teal' | 'rose' };
 }
 
-export type AttendanceStatus = 'P' | 'A' | 'OD';
-export type CheckInMethod = 'online' | 'qr' | 'hardcopy' | 'excel';
+export type AttendanceStatus = 'P' | 'A' | 'OD' | '';
+export type CheckInMethod = 'online' | 'qr' | 'hardcopy' | 'excel' | 'manual';
 
 export interface StudentAttendanceRecord {
+  eventId?: string;
   regNo: string;
   studentName: string;
   className: string;
@@ -167,4 +168,4 @@ export interface AttendanceSummary {
   absent: number;
   od: number;
   attendancePercentage: number;
-}
+}
