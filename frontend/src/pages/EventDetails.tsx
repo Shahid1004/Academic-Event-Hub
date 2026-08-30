@@ -3,6 +3,10 @@ import * as XLSX from 'xlsx';
 import type { AttendanceStatus, EventRecord, Page, StudentAttendanceRecord } from '../types';
 import { eventTypeColors } from './Dashboard';
 import { getEventAttendanceApi, getEvents, importEventAttendanceRosterApi, qrCheckInApi, saveEventAttendanceApi, scanHardCopyAttendanceApi } from '../services/api';
+import type { Page, EventRecord, StudentAttendanceRecord, AttendanceStatus } from '../types';
+import { getEvents, getEventAttendanceApi, saveEventAttendanceApi, qrCheckInApi } from '../services/api';
+import { sampleEvents } from '../data/sampleData';
+import { eventTypeColors } from './Dashboard';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
 interface EventDetailsProps {
@@ -199,6 +203,7 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
 
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadDocName, setUploadDocName] = useState('');
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, File[]>>({});
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
@@ -573,12 +578,21 @@ Attendance: ${event.attendance}%</p>
       x: 50, y: 770 - index * 25, size: index === 0 ? 18 : 11, font,
       color: index === 0 ? rgb(0.22, 0.19, 0.51) : rgb(0.12, 0.16, 0.23)
     }));
+    lines.forEach((line, index) => {
+      if (line) {
+        page.drawText(line.slice(0, 105), {
+          x: 50, y: 770 - index * 25, size: index === 0 ? 18 : 11, font,
+          color: index === 0 ? rgb(0.22, 0.19, 0.51) : rgb(0.12, 0.16, 0.23)
+        });
+      }
+    });
     return pdf;
   };
 
   const downloadPdf = async (pdf: PDFDocument, filename: string) => {
     const bytes = await pdf.save();
     const objectUrl = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: 'application/pdf' }));
+    const objectUrl = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
     const link = document.createElement('a');
     link.href = objectUrl;
     link.download = filename;
