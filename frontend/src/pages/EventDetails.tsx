@@ -127,17 +127,6 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
       .finally(() => setEventLoading(false));
   }, [eventId]);
 
-  if (eventLoading) return <div className="p-6 text-slate-500">Loading event details...</div>;
-  if (!event) return (
-    <div className="p-6 space-y-3">
-      <button onClick={() => navigate('all-events')} className="text-sm text-indigo-600 hover:text-indigo-800">← Back to Events</button>
-      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-        {eventError ? 'This event could not be loaded. Please return to Events and try again.' : 'Event not found.'}
-      </div>
-    </div>
-  );
-
-  // Fetch attendance from backend API if available
   useEffect(() => {
     let isMounted = true;
     getEventAttendanceApi(eventId).then((data) => {
@@ -147,6 +136,16 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
     });
     return () => { isMounted = false; };
   }, [eventId]);
+
+  if (eventLoading) return <div className="p-6 text-slate-500">Loading event details...</div>;
+  if (!event) return (
+    <div className="p-6 space-y-3">
+      <button onClick={() => navigate('all-events')} className="text-sm text-indigo-600 hover:text-indigo-800">← Back to Events</button>
+      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        {eventError ? 'This event could not be loaded. Please return to Events and try again.' : 'Event not found.'}
+      </div>
+    </div>
+  );
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'overview', label: 'Overview' },
