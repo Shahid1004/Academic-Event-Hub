@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { sampleEvents, academicYears, eventTypes } from '../data/sampleData';
+import * as XLSX from 'xlsx';
 
 export default function SemesterExcel() {
   const [yearFilter, setYearFilter] = useState('2025-26');
@@ -10,6 +11,7 @@ export default function SemesterExcel() {
   const [search, setSearch] = useState('');
   const [sortCol, setSortCol] = useState<string>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [isExporting, setIsExporting] = useState(false);
 
   const filtered = sampleEvents.filter(e => {
     const matchYear = yearFilter === 'ALL' || e.academicYear === yearFilter;
@@ -30,6 +32,78 @@ export default function SemesterExcel() {
   const handleSort = (col: string) => {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortCol(col); setSortDir('asc'); }
+  };
+
+  const handleExportExcel = async () => {
+    try {
+      setIsExporting(true);
+      
+      // Prepare data for export
+      const exportData = filtered.map((e, i) => ({
+        'S.No': i + 1,
+        'Academic Year': e.academicYear,
+        'Semester': `Sem ${e.semester}`,
+        'Department': e.department,
+        'Year/Class': e.targetStudents.split(' ').slice(0, 3).join(' '),
+        'Event Type': e.type,
+        'Event Name': e.name,
+        'Event Date': e.date,
+        'Time': `${e.startTime}–${e.endTime}`,
+        'Coordinator': e.coordinator.split(' ').slice(0, 2).join(' '),
+        'Resource Person': e.resourcePerson.name,
+        'Designation': e.resourcePerson.designation,
+        'Organization': e.resourcePerson.organization,
+        'Mode': e.mode,
+        'Venue': e.venue,
+        'Participants': e.actualParticipants || '—',
+        'Attendance %': e.attendance > 0 ? `${e.attendance}%` : '—',
+        'Feedback Score': e.feedbackScore > 0 ? e.feedbackScore : '—',
+        'Doc Status': e.docStatus,
+        'Status': e.status,
+      }));
+
+      // Create workbook and worksheet
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Events');
+
+      // Set column widths
+      const colWidths = [
+        { wch: 6 },   // S.No
+        { wch: 12 },  // Academic Year
+        { wch: 10 },  // Semester
+        { wch: 12 },  // Department
+        { wch: 14 },  // Year/Class
+        { wch: 15 },  // Event Type
+        { wch: 20 },  // Event Name
+        { wch: 12 },  // Event Date
+        { wch: 16 },  // Time
+        { wch: 18 },  // Coordinator
+        { wch: 18 },  // Resource Person
+        { wch: 15 },  // Designation
+        { wch: 18 },  // Organization
+        { wch: 10 },  // Mode
+        { wch: 18 },  // Venue
+        { wch: 12 },  // Participants
+        { wch: 12 },  // Attendance %
+        { wch: 12 },  // Feedback Score
+        { wch: 12 },  // Doc Status
+        { wch: 12 },  // Status
+      ];
+      ws['!cols'] = colWidths;
+
+      // Generate filename
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `Semester-Events-${yearFilter}-${semFilter}-${timestamp}.xlsx`;
+
+      // Write file
+      XLSX.writeFile(wb, filename);
+    } catch (error) {
+      console.error('Error exporting Excel:', error);
+      alert('Failed to export Excel file');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const SortIcon = ({ col }: { col: string }) => (
@@ -93,7 +167,13 @@ export default function SemesterExcel() {
           </select>
           <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="px-3 py-2 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
           <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="px-3 py-2 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-          <button className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-medium">📥 Export Excel</button>
+          <button 
+            onClick={handleExportExcel}
+            disabled={isExporting || filtered.length === 0}
+            className="px-3 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-xl text-sm font-medium transition-colors"
+          >
+            {isExporting ? '⏳ Exporting...' : '📥 Export Excel'}
+          </button>
           <button className="px-3 py-2 border border-green-200 text-green-700 rounded-xl text-sm hover:bg-green-50">⬇️ Download Excel</button>
         </div>
         <div className="mt-2 text-xs text-slate-500">{filtered.length} records</div>
