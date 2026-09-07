@@ -38,7 +38,7 @@ const listEvents = async (req, res) => {
 
 const listCalendarEvents = async (req, res) => {
   try {
-    const { fromDate, toDate, department } = req.query;
+    const { fromDate, toDate, department, academicYear } = req.query;
     const filter = {};
 
     if (department && department !== "ALL") {
@@ -48,6 +48,7 @@ const listCalendarEvents = async (req, res) => {
       }
       filter.department = value;
     }
+    if (academicYear && academicYear !== "ALL") filter.academicYear = academicYear.toString();
 
     if (fromDate || toDate) {
       filter.date = {};
@@ -93,9 +94,13 @@ const createEvent = async (req, res) => {
       return res.status(400).json({ success: false, message: "Student years must be between 1 and 4" });
     }
     if (assignedFaculty.length) {
-      const facultyUsers = await User.find({ _id: { $in: assignedFaculty }, role: "faculty", active: true }).select("name");
-      if (facultyUsers.length !== assignedFaculty.length) {
-        return res.status(400).json({ success: false, message: "Every assigned manager must be an active faculty user" });
+      const coordinatorUsers = await User.find({
+        _id: { $in: assignedFaculty },
+        role: { $in: ["admin", "hod", "coordinator", "faculty"] },
+        active: true
+      }).select("name");
+      if (coordinatorUsers.length !== assignedFaculty.length) {
+        return res.status(400).json({ success: false, message: "Every assigned coordinator must be an active user" });
       }
     }
 

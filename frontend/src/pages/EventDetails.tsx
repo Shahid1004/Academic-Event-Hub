@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { EventRecord, Page } from '../types';
+import * as XLSX from 'xlsx';
+import type { AttendanceStatus, EventRecord, Page, StudentAttendanceRecord } from '../types';
+import { eventTypeColors } from './Dashboard';
+import { getEventAttendanceApi, getEvents, importEventAttendanceRosterApi, qrCheckInApi, saveEventAttendanceApi, scanHardCopyAttendanceApi } from '../services/api';
+import type { Page, EventRecord, StudentAttendanceRecord, AttendanceStatus } from '../types';
+import { getEvents, getEventAttendanceApi, saveEventAttendanceApi, qrCheckInApi } from '../services/api';
 import { sampleEvents } from '../data/sampleData';
 import { eventTypeColors } from './Dashboard';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
@@ -107,15 +113,15 @@ const buildAiAnalysis = (event: EventRecord, attendance: EventAttendanceSummary,
   };
 };
 
-const students = [
-  { reg: '22IT001', name: 'Arun Kumar M', class: 'III IT A', status: 'P' as const },
-  { reg: '22IT002', name: 'Bhavya S', class: 'III IT A', status: 'P' as const },
-  { reg: '22IT003', name: 'Chethan R', class: 'III IT B', status: 'A' as const },
-  { reg: '22IT004', name: 'Divya P', class: 'III IT A', status: 'OD' as const },
-  { reg: '22IT005', name: 'Elan K', class: 'III IT B', status: 'P' as const },
-  { reg: '22IT006', name: 'Fathima N', class: 'III IT A', status: 'P' as const },
-  { reg: '22IT007', name: 'Ganesh S', class: 'III IT B', status: 'A' as const },
-  { reg: '22IT008', name: 'Harini M', class: 'III IT A', status: 'P' as const },
+const defaultStudents: StudentAttendanceRecord[] = [
+  { regNo: '22IT001', studentName: 'Arun Kumar M', className: 'III IT A', status: 'P', department: 'IT' },
+  { regNo: '22IT002', studentName: 'Bhavya S', className: 'III IT A', status: 'P', department: 'IT' },
+  { regNo: '22IT003', studentName: 'Chethan R', className: 'III IT B', status: 'A', department: 'IT' },
+  { regNo: '22IT004', studentName: 'Divya P', className: 'III IT A', status: 'OD', department: 'IT' },
+  { regNo: '22IT005', studentName: 'Elan K', className: 'III IT B', status: 'P', department: 'IT' },
+  { regNo: '22IT006', studentName: 'Fathima N', className: 'III IT A', status: 'P', department: 'IT' },
+  { regNo: '22IT007', studentName: 'Ganesh S', className: 'III IT B', status: 'A', department: 'IT' },
+  { regNo: '22IT008', studentName: 'Harini M', className: 'III IT A', status: 'P', department: 'IT' },
 ];
 
 const documents = [
@@ -137,17 +143,166 @@ const docStatusColors: Record<string, string> = {
   'Pending': 'bg-red-100 text-red-600',
 };
 
+const deriveDepartment = (deptVal?: string, classVal?: string): string => {
+  const cleanDept = String(deptVal || '').trim();
+  const c = String(classVal || '').trim();
+  const combined = `${cleanDept} ${c}`.toLowerCase();
+
+  if (!combined || combined.trim() === '-' || combined.trim() === '') return '-';
+
+  if (
+    combined.includes('artificial intelligence') ||
+    /\b(ads|aids)\b/i.test(combined) ||
+    combined.includes('ai & ds') ||
+    combined.includes('ai and ds') ||
+    combined.includes('ai & data science') ||
+    combined.includes('ai and data science')
+  ) {
+    return 'Artificial Intelligence and Data Science';
+  }
+
+  if (
+    combined.includes('information technology') ||
+    /\b(it)\b/i.test(combined)
+  ) {
+    return 'Information Technology';
+  }
+
+  if (cleanDept && cleanDept !== '-') {
+    return cleanDept;
+  }
+
+  return '-';
+};
+
+const sortAttendanceRecords = <T extends { department?: string; studentName?: string; regNo?: string }>(records: T[]): T[] => {
+  return [...records].sort((a, b) => {
+    const deptA = String(a.department || '-').trim();
+    const deptB = String(b.department || '-').trim();
+    const deptComp = deptA.localeCompare(deptB, undefined, { sensitivity: 'base', numeric: true });
+    if (deptComp !== 0) return deptComp;
+
+    const nameA = String(a.studentName || '').trim();
+    const nameB = String(b.studentName || '').trim();
+    const nameComp = nameA.localeCompare(nameB, undefined, { sensitivity: 'base', numeric: true });
+    if (nameComp !== 0) return nameComp;
+
+    const regA = String(a.regNo || '').trim();
+    const regB = String(b.regNo || '').trim();
+    return regA.localeCompare(regB, undefined, { sensitivity: 'base', numeric: true });
+  });
+};
+
+const initialDefaultStudents: StudentAttendanceRecord[] = sortAttendanceRecords(
+  defaultStudents.map((s) => ({
+    ...s,
+    department: deriveDepartment(s.department, s.className),
+  }))
+);
+
+const feedbackData = [
+  { label: '5 Stars', count: 28, pct: 52 },
+  { label: '4 Stars', count: 18, pct: 33 },
+  { label: '3 Stars', count: 6, pct: 11 },
+  { label: '2 Stars', count: 2, pct: 4 },
+  { label: '1 Star', count: 0, pct: 0 },
+];
+
+const comments = [
+  'Excellent hands-on session! The instructor was very clear and patient.',
+  'Really helpful for our project work. Would love more such sessions.',
+  'Good content, but the time was a bit short. Need more practice sessions.',
+  'Very informative. The resource person explained concepts with real-world examples.',
+];
+
+const feedbackSubmitters = [
+  { reg: '22IT001', name: 'Arun Kumar M', submitted: true },
+  { reg: '22IT002', name: 'Bhavya S', submitted: true },
+  { reg: '22IT003', name: 'Chethan R', submitted: false },
+  { reg: '22IT004', name: 'Divya P', submitted: true },
+  { reg: '22IT005', name: 'Elan K', submitted: true },
+  { reg: '22IT006', name: 'Fathima N', submitted: false },
+  { reg: '22IT007', name: 'Ganesh S', submitted: true },
+  { reg: '22IT008', name: 'Harini M', submitted: true },
+];
+
 export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
   const [tab, setTab] = useState<Tab>('overview');
   const [attendanceFilter, setAttendanceFilter] = useState<'All' | 'P' | 'A' | 'OD'>('All');
   const [attendanceSearch, setAttendanceSearch] = useState('');
-  const [studentStatuses, setStudentStatuses] = useState<Record<string, 'P' | 'A' | 'OD'>>(
-    Object.fromEntries(students.map(s => [s.reg, s.status]))
-  );
+  
+  // Attendance records state
+  const [attendanceRecords, setAttendanceRecords] = useState<StudentAttendanceRecord[]>(initialDefaultStudents);
+  const [savingAttendance, setSavingAttendance] = useState(false);
+  const [saveToast, setSaveToast] = useState<string | null>(null);
+
+  // Attendance mode
+  const [attendanceMode, setAttendanceMode] = useState<'online' | 'qr' | 'hardcopy' | 'od_generator' | 'excel'>('online');
+  
+  // QR scanner simulator state
+  const [qrRegInput, setQrRegInput] = useState('');
+  const [qrLogs, setQrLogs] = useState<{ regNo: string; name: string; time: string; status: string }[]>([]);
+  const [qrMessage, setQrMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  // Add Student Manual Modal state
+  const [showAddStudentModal, setShowAddStudentModal] = useState(false);
+  const [addStudentForm, setAddStudentForm] = useState({
+    regNo: '',
+    studentName: '',
+    className: '',
+    department: '',
+    status: 'P' as AttendanceStatus,
+  });
+  const [addStudentError, setAddStudentError] = useState<string | null>(null);
+
+  // Hardcopy AI upload & scan state
+  const [hardCopySheetType, setHardCopySheetType] = useState<'signed' | 'participant_list'>('signed');
+  const [hardCopyFileName, setHardCopyFileName] = useState<string | null>(null);
+  const [hardCopyScanning, setHardCopyScanning] = useState(false);
+  const [hardCopyScanError, setHardCopyScanError] = useState<string | null>(null);
+  const [selectedHardCopyFiles, setSelectedHardCopyFiles] = useState<File[]>([]);
+  const [hardCopyProcessingProgress, setHardCopyProcessingProgress] = useState<string | null>(null);
+  const [hardCopyMultiSummary, setHardCopyMultiSummary] = useState<any | null>(null);
+  const [hardCopyRows, setHardCopyRows] = useState<Array<{
+    regNo: string;
+    studentName: string;
+    department: string;
+    className: string;
+    status: AttendanceStatus;
+    signaturePresent?: boolean;
+    isUncertain?: boolean;
+    uncertainFields?: string[];
+    sourceFiles?: string[];
+  }>>([]);
+  const [editingHardCopyIndex, setEditingHardCopyIndex] = useState<number | null>(null);
+  const [editingHardCopyData, setEditingHardCopyData] = useState<{
+    regNo: string;
+    studentName: string;
+    department: string;
+    className: string;
+    status: AttendanceStatus;
+    signaturePresent?: boolean;
+    isUncertain?: boolean;
+    uncertainFields?: string[];
+  } | null>(null);
+
+  // Excel state
+  const [uploadedExcelName, setUploadedExcelName] = useState<string | null>(null);
+  const [excelImportRows, setExcelImportRows] = useState<Array<{
+    regNo: string;
+    studentName: string;
+    department: string;
+    className: string;
+    status: 'Valid' | 'Duplicate' | 'Invalid';
+    reason?: string;
+  }>>([]);
+  const [excelImportMeta, setExcelImportMeta] = useState<{ totalRows: number; validStudents: number; duplicateCount: number; invalidRows: number } | null>(null);
+  const [excelImportLoading, setExcelImportLoading] = useState(false);
+
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadDocName, setUploadDocName] = useState('');
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, File[]>>({});
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiGenerated, setAiGenerated] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<AiAnalysis | null>(null);
@@ -156,11 +311,6 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
   const [reportGenerated, setReportGenerated] = useState(false);
   const [reportDownloadLoading, setReportDownloadLoading] = useState(false);
   const [showOtherDocModal, setShowOtherDocModal] = useState(false);
-  const [attendanceMode, setAttendanceMode] = useState<'online' | 'hardcopy'>('online');
-  const [hardCopyUploaded, setHardCopyUploaded] = useState(false);
-  const [hardCopyStatuses, setHardCopyStatuses] = useState<Record<string, 'P' | 'A'>>(
-    Object.fromEntries(students.map(s => [s.reg, 'A' as const]))
-  );
   const [googleFormLink, setGoogleFormLink] = useState('');
   const [docOrder, setDocOrder] = useState<number[]>(documents.map((_, i) => i));
   const [mergedReportGenerated, setMergedReportGenerated] = useState(false);
@@ -226,6 +376,44 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
     { num: 12, title: 'Corrective Action / Recommendations', content: reportRecommendations },
     { num: 13, title: 'Conclusion', content: `The ${reportValue(event.type)} titled "${reportValue(event.name)}" was conducted on ${reportValue(event.date)} with ${reportValue(event.actualParticipants)} participant(s) recorded. The event addressed its recorded objective, with attendance recorded as ${event.attendance ? `${event.attendance}%` : 'Not Available'} and feedback recorded as ${event.feedbackScore ? `${event.feedbackScore}/5` : 'Not Available'}.` },
   ];
+  const [event, setEvent] = useState<EventRecord | null>(null);
+  const [eventLoading, setEventLoading] = useState(true);
+  const [eventError, setEventError] = useState(false);
+
+  useEffect(() => {
+    setEventLoading(true);
+    setEventError(false);
+    getEvents()
+      .then(events => {
+        setEvent(events.find(item => item.id === eventId) || null);
+        setEventError(!events.some(item => item.id === eventId));
+      })
+      .catch(() => {
+        setEvent(null);
+        setEventError(true);
+      })
+      .finally(() => setEventLoading(false));
+  }, [eventId]);
+
+  useEffect(() => {
+    let isMounted = true;
+    getEventAttendanceApi(eventId).then((data) => {
+      if (isMounted && data && data.records && data.records.length > 0) {
+        setAttendanceRecords(sortAttendanceRecords(data.records));
+      }
+    });
+    return () => { isMounted = false; };
+  }, [eventId]);
+
+  if (eventLoading) return <div className="p-6 text-slate-500">Loading event details...</div>;
+  if (!event) return (
+    <div className="p-6 space-y-3">
+      <button onClick={() => navigate('all-events')} className="text-sm text-indigo-600 hover:text-indigo-800">← Back to Events</button>
+      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        {eventError ? 'This event could not be loaded. Please return to Events and try again.' : 'Event not found.'}
+      </div>
+    </div>
+  );
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'overview', label: 'Overview' },
@@ -239,15 +427,253 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
 
   const docPct = event.docStatus === 'Completed' ? 100 : event.docStatus === 'Partial' ? 60 : 20;
 
-  const filteredStudents = students.filter(s => {
-    const matchFilter = attendanceFilter === 'All' || studentStatuses[s.reg] === attendanceFilter;
-    const matchSearch = !attendanceSearch || s.reg.includes(attendanceSearch) || s.name.toLowerCase().includes(attendanceSearch.toLowerCase());
+  const filteredStudents = attendanceRecords.filter(s => {
+    const matchFilter = attendanceFilter === 'All' || s.status === attendanceFilter;
+    const matchSearch = !attendanceSearch || s.regNo.toLowerCase().includes(attendanceSearch.toLowerCase()) || s.studentName.toLowerCase().includes(attendanceSearch.toLowerCase());
     return matchFilter && matchSearch;
   });
 
-  const present = Object.values(studentStatuses).filter(v => v === 'P').length;
-  const absent = Object.values(studentStatuses).filter(v => v === 'A').length;
-  const od = Object.values(studentStatuses).filter(v => v === 'OD').length;
+  const present = attendanceRecords.filter(v => v.status === 'P').length;
+  const absent = attendanceRecords.filter(v => v.status === 'A').length;
+  const od = attendanceRecords.filter(v => v.status === 'OD').length;
+  const totalStudents = attendanceRecords.length;
+  const attendanceRate = totalStudents > 0 ? Math.round(((present + od) / totalStudents) * 100) : 0;
+
+  // Toggle single status
+  const updateStudentStatus = (regNo: string, newStatus: AttendanceStatus) => {
+    setAttendanceRecords(prev =>
+      prev.map(s => s.regNo === regNo ? { ...s, status: newStatus, checkInMethod: 'online' } : s)
+    );
+  };
+
+  // Mark all present
+  const markAllPresent = () => {
+    setAttendanceRecords(prev => prev.map(s => ({ ...s, status: 'P' })));
+  };
+
+  // Save to Backend API & Local State
+  const handleSaveAttendance = async () => {
+    setSavingAttendance(true);
+    const result = await saveEventAttendanceApi(eventId, attendanceRecords);
+    setSavingAttendance(false);
+    setSaveToast('✅ Attendance records saved successfully!');
+    setTimeout(() => setSaveToast(null), 3500);
+  };
+
+  // Add student manually with duplicate prevention & auto-sorting
+  const handleAddStudentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanReg = addStudentForm.regNo.trim().toUpperCase();
+    const cleanName = addStudentForm.studentName.trim();
+    if (!cleanReg || !cleanName) {
+      setAddStudentError('Register Number and Student Name are required.');
+      return;
+    }
+
+    // Duplicate check
+    const isDuplicate = attendanceRecords.some(
+      (s) => s.regNo.trim().toUpperCase() === cleanReg
+    );
+    if (isDuplicate) {
+      setAddStudentError('This student is already in the attendance roster.');
+      return;
+    }
+
+    const finalDept = deriveDepartment(addStudentForm.department, addStudentForm.className);
+    const newStudent: StudentAttendanceRecord = {
+      eventId,
+      regNo: cleanReg,
+      studentName: cleanName,
+      className: addStudentForm.className.trim() || '-',
+      department: finalDept,
+      status: addStudentForm.status,
+      checkInMethod: 'manual',
+      markedAt: new Date().toLocaleTimeString(),
+      remarks: '',
+    };
+
+    const updatedRoster = sortAttendanceRecords([...attendanceRecords, newStudent]);
+    setAttendanceRecords(updatedRoster);
+    await saveEventAttendanceApi(eventId, updatedRoster);
+
+    setShowAddStudentModal(false);
+    setAddStudentForm({ regNo: '', studentName: '', className: '', department: '', status: 'P' });
+    setAddStudentError(null);
+    setSaveToast(`✅ Student ${cleanName} (${cleanReg}) added to Online Roster!`);
+    setTimeout(() => setSaveToast(null), 3000);
+  };
+
+  // ── Client-side guard: reject any AI row containing SVG/XML/garbage data ──
+  const INVALID_FIELD_PATTERN = /<|>|\bpath\b|d="M|\.svg|xmlns|DOCTYPE/i;
+  const validateAiStudentRow = (s: {
+    regNo?: string;
+    studentName?: string;
+    className?: string;
+    department?: string;
+    status?: string;
+  }): boolean => {
+    const name = String(s.studentName || '');
+    const reg  = String(s.regNo || '');
+    const cls  = String(s.className || '');
+    const dept = String(s.department || '');
+    // Must have a non-empty student name
+    if (!name.trim()) return false;
+    // Field-level contamination check
+    if (INVALID_FIELD_PATTERN.test(name)) return false;
+    if (INVALID_FIELD_PATTERN.test(reg))  return false;
+    if (INVALID_FIELD_PATTERN.test(cls))  return false;
+    if (INVALID_FIELD_PATTERN.test(dept)) return false;
+    // Reasonable length limits
+    if (name.length > 120) return false;
+    if (reg.length  > 30)  return false;
+    if (cls.length  > 60)  return false;
+    if (dept.length > 100) return false;
+    return true;
+  };
+
+  // Hard Copy Physical Sheet Scanning via AI Vision API (Supports Single & Multi-File)
+  const handleHardCopyScanFile = async (filesToProcess?: File | File[]) => {
+    let files: File[] = [];
+
+    if (filesToProcess) {
+      files = Array.isArray(filesToProcess) ? filesToProcess : [filesToProcess];
+    } else {
+      files = selectedHardCopyFiles;
+    }
+
+    if (!files || files.length === 0) {
+      setHardCopyScanError('Please select at least one attendance sheet file.');
+      return;
+    }
+
+    setHardCopyRows([]);
+    setHardCopyScanError(null);
+    setHardCopyScanning(true);
+    setHardCopyMultiSummary(null);
+
+    const displayName = files.length === 1 ? files[0].name : `${files.length} Attendance Sheets`;
+    setHardCopyFileName(displayName);
+    setHardCopyProcessingProgress(`Processing 1 of ${files.length} sheets with AI Vision...`);
+
+    try {
+      const apiResult = await scanHardCopyAttendanceApi(files, hardCopySheetType, eventId);
+
+      if (apiResult && apiResult.success && apiResult.data?.students?.length) {
+        const cleanStudents = apiResult.data.students.filter(validateAiStudentRow);
+        const rejectedCount = apiResult.data.students.length - cleanStudents.length;
+
+        if (cleanStudents.length === 0) {
+          setHardCopyScanError('⚠️ AI extraction returned invalid document data. Please re-scan with clearer document photos/PDFs.');
+          setSaveToast(`⚠️ No valid student data extracted.`);
+          return;
+        }
+
+        const parsedStudents = cleanStudents.map((s) => ({
+          ...s,
+          department: deriveDepartment(s.department, s.className),
+          status: s.status as AttendanceStatus,
+        }));
+
+        setHardCopyRows(sortAttendanceRecords(parsedStudents));
+        if (apiResult.summary) {
+          setHardCopyMultiSummary(apiResult.summary);
+        }
+
+        setSaveToast(
+          `✅ Extracted ${parsedStudents.length} unique student records across ${files.length} sheet(s)!` +
+          (rejectedCount > 0 ? ` (${rejectedCount} corrupted rows discarded)` : '')
+        );
+      } else {
+        const errMsg = apiResult?.message || 'AI Vision could not extract student rows from these documents.';
+        if (apiResult?.summary) {
+          setHardCopyMultiSummary(apiResult.summary);
+        }
+        setHardCopyScanError(`⚠️ ${errMsg}`);
+        setSaveToast(`⚠️ Scanning failed. No student data extracted.`);
+      }
+    } catch (err: any) {
+      console.error('Error scanning hard copy file(s):', err);
+      setHardCopyScanError(`⚠️ Failed to scan documents: ${err.message || 'Server connection error'}`);
+    } finally {
+      setHardCopyScanning(false);
+      setHardCopyProcessingProgress(null);
+      setTimeout(() => setSaveToast(null), 4000);
+    }
+  };
+
+  // Confirm Hard Copy Import & Replace Online Roster completely
+  const handleConfirmHardCopyImport = async () => {
+    if (!hardCopyRows.length) return;
+
+    setHardCopyScanning(true);
+    const validStudents = hardCopyRows.map((r) => ({
+      regNo: r.regNo,
+      studentName: r.studentName,
+      department: r.department || '-',
+      className: r.className || '-',
+      status: r.status || 'P',
+    }));
+
+    const result = await importEventAttendanceRosterApi(eventId, validStudents);
+    setHardCopyScanning(false);
+
+    let importedRecords: StudentAttendanceRecord[] = [];
+    if (result && result.success && 'data' in result && result.data?.records?.length) {
+      importedRecords = sortAttendanceRecords(result.data.records);
+    } else {
+      importedRecords = sortAttendanceRecords(
+        validStudents.map((st) => ({
+          eventId,
+          regNo: st.regNo,
+          studentName: st.studentName,
+          department: st.department || '-',
+          className: st.className || '-',
+          status: st.status as AttendanceStatus,
+          remarks: '',
+        }))
+      );
+    }
+
+    setAttendanceRecords(importedRecords);
+    setHardCopyRows([]);
+    setHardCopyFileName(null);
+    setAttendanceMode('online');
+    setSaveToast(`✅ Imported ${importedRecords.length} students from hard copy sheet to Online Roster!`);
+    setTimeout(() => setSaveToast(null), 3500);
+  };
+
+  // Student QR check-in simulation
+  const handleQrCheckIn = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cleanReg = qrRegInput.trim().toUpperCase();
+    if (!cleanReg) return;
+
+    const student = attendanceRecords.find(s => s.regNo.toUpperCase() === cleanReg);
+    
+    // Call backend API as well
+    await qrCheckInApi(eventId, cleanReg, student?.studentName);
+
+    if (student) {
+      setAttendanceRecords(prev => prev.map(s => s.regNo.toUpperCase() === cleanReg ? { ...s, status: 'P', checkInMethod: 'qr', markedAt: new Date().toLocaleTimeString() } : s));
+      setQrMessage({ text: `Success! ${student.studentName} (${cleanReg}) checked in.`, type: 'success' });
+      setQrLogs(prev => [{ regNo: cleanReg, name: student.studentName, time: new Date().toLocaleTimeString(), status: 'P' }, ...prev]);
+    } else {
+      // Add new student
+      const newRec: StudentAttendanceRecord = {
+        regNo: cleanReg,
+        studentName: `Student ${cleanReg}`,
+        className: 'III IT A',
+        status: 'P',
+        checkInMethod: 'qr',
+        markedAt: new Date().toLocaleTimeString()
+      };
+      setAttendanceRecords(prev => [...prev, newRec]);
+      setQrMessage({ text: `Checked in new student ${cleanReg}!`, type: 'success' });
+      setQrLogs(prev => [{ regNo: cleanReg, name: `Student ${cleanReg}`, time: new Date().toLocaleTimeString(), status: 'P' }, ...prev]);
+    }
+    setQrRegInput('');
+    setTimeout(() => setQrMessage(null), 3000);
+  };
 
   const handleGenAI = async () => {
     setAiLoading(true);
@@ -422,6 +848,25 @@ Attendance: ${event.attendance}%</p>
     drawText(`Report Generated: ${new Date().toLocaleString()}`, 8, false, rgb(0.6, 0.6, 0.6));
     drawText(`Document ID: ${eventSnapshot.id}`, 8, false, rgb(0.6, 0.6, 0.6));
 
+    const lines = [
+      'ACADEMIC EVENT HUB - EVENT REPORT', event.name,
+      `Department: ${event.department}`, `Date: ${event.date} | Venue: ${event.venue}`,
+      '', 'Objective', event.objective, '', 'Description', event.description,
+      '', `Participants: ${event.actualParticipants}`, `Attendance: ${event.attendance}%`, `Feedback: ${event.feedbackScore}/5`,
+      '', `Coordinator: ${event.coordinator}`
+    ];
+    lines.forEach((line, index) => page.drawText((line || '').slice(0, 105), {
+      x: 50, y: 770 - index * 25, size: index === 0 ? 18 : 11, font,
+      color: index === 0 ? rgb(0.22, 0.19, 0.51) : rgb(0.12, 0.16, 0.23)
+    }));
+    lines.forEach((line, index) => {
+      if (line) {
+        page.drawText(line.slice(0, 105), {
+          x: 50, y: 770 - index * 25, size: index === 0 ? 18 : 11, font,
+          color: index === 0 ? rgb(0.22, 0.19, 0.51) : rgb(0.12, 0.16, 0.23)
+        });
+      }
+    });
     return pdf;
   };
 
@@ -450,6 +895,16 @@ Attendance: ${event.attendance}%</p>
       console.error('PDF download error:', error);
       throw new Error('Failed to generate PDF download');
     }
+    const bytes = await pdf.save();
+    const objectUrl = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: 'application/pdf' }));
+    const objectUrl = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
   };
 
   const handleDownloadReport = async () => {
@@ -633,7 +1088,7 @@ Attendance: ${event.attendance}%</p>
                   ['Department', event.department === 'BOTH' ? 'BOTH – IT+AIDS' : event.department],
                   ['Academic Year', event.academicYear],
                   ['Student Year(s)', event.targetYears?.length ? event.targetYears.map(year => `Year ${year}`).join(', ') : event.targetStudents],
-                  ['Semester', `Semester ${event.semester}`],
+                  ['Semester', event.semester === 'I' ? 'Odd semester' : 'Even semester'],
                   ['Date', event.date],
                   ['Date To', event.dateTo || event.date],
                   ['Time', `${event.startTime} – ${event.endTime}`],
@@ -641,7 +1096,7 @@ Attendance: ${event.attendance}%</p>
                   ['Mode', event.mode],
                   ['Sponsored By', event.sponsoredBy || '—'],
                   ['Target Students', event.targetStudents],
-                  ['Expected Participants', event.expectedParticipants.toString()],
+                  ['Expected Participants', String(event.expectedParticipants ?? 0)],
                   ['Actual Participants', event.actualParticipants > 0 ? event.actualParticipants.toString() : 'N/A'],
                 ].map(([label, value]) => (
                   <div key={label}>
@@ -683,7 +1138,7 @@ Attendance: ${event.attendance}%</p>
           <div className="space-y-4">
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
               <h3 className="font-bold font-heading text-slate-800 mb-3">Faculty Coordinators</h3>
-              {[...(event.assignedFaculty || []), ...(event.assignedFaculty?.length ? [] : [event.coordinator, ...event.additionalCoordinators])].map((coordinator, index) => {
+              {[...(event.assignedFaculty || []), ...(event.assignedFaculty?.length ? [] : [event.coordinator, ...(event.additionalCoordinators || [])])].filter(Boolean).map((coordinator, index) => {
                 const name = typeof coordinator === 'string' ? coordinator : `${coordinator.name}${coordinator.designation ? ` (${coordinator.designation})` : ''}`;
                 return (
                 <div key={`${name}-${index}`} className="flex items-center gap-3 mb-2">
@@ -750,233 +1205,1038 @@ Attendance: ${event.attendance}%</p>
       )}
 
       {tab === 'attendance' && (
-        <div className="space-y-4">
-          {/* Mode toggle */}
-          <div className="flex gap-3">
-            <button
-              onClick={() => setAttendanceMode('online')}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
-                attendanceMode === 'online'
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                  : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
-              }`}
-            >
-              🖥️ Take Online Attendance
-            </button>
-            <button
-              onClick={() => setAttendanceMode('hardcopy')}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
-                attendanceMode === 'hardcopy'
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                  : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
-              }`}
-            >
-              📋 Upload Hard Copy
-            </button>
+        <div className="space-y-5">
+          {/* Toast Notification */}
+          {saveToast && (
+            <div className="bg-emerald-600 text-white px-4 py-3 rounded-xl text-sm font-semibold shadow-lg flex items-center justify-between animate-fade-in">
+              <span>{saveToast}</span>
+              <button onClick={() => setSaveToast(null)} className="text-white hover:text-emerald-200 font-bold ml-4">✕</button>
+            </div>
+          )}
+
+          {/* Mode Navigation Bar */}
+          <div className="flex gap-2 bg-white rounded-2xl p-2 shadow-sm border border-slate-100 overflow-x-auto">
+            {[
+              { id: 'online', label: '🖥️ Online Roster' },
+              { id: 'qr', label: '📱 QR Check-In & Scanner' },
+              { id: 'hardcopy', label: '📋 Hard Copy Upload' },
+              { id: 'excel', label: '📊 Excel Import/Export' },
+              { id: 'od_generator', label: '📜 OD Pass Generator' },
+            ].map((m) => (
+              <button
+                key={m.id}
+                onClick={() => setAttendanceMode(m.id as any)}
+                className={`flex-shrink-0 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border transition-all ${
+                  attendanceMode === m.id
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
           </div>
 
-          {attendanceMode === 'online' && (
-            <>
-              {/* Stats */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {[
-                  { label: 'Total Students', value: students.length, color: 'text-slate-700' },
-                  { label: 'Present', value: present, color: 'text-green-600' },
-                  { label: 'Absent', value: absent, color: 'text-red-600' },
-                  { label: 'OD', value: od, color: 'text-blue-600' },
-                ].map(s => (
-                  <div key={s.label} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 text-center">
-                    <div className={`text-3xl font-bold font-heading ${s.color}`}>{s.value}</div>
-                    <div className="text-xs text-slate-500 mt-1">{s.label}</div>
-                  </div>
-                ))}
+          {/* Stats Overview Card Row */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            {[
+              { label: 'Total Registered', value: totalStudents, color: 'text-slate-800', bg: 'bg-slate-50' },
+              { label: 'Present (P)', value: present, color: 'text-green-600', bg: 'bg-green-50/50' },
+              { label: 'Absent (A)', value: absent, color: 'text-red-600', bg: 'bg-red-50/50' },
+              { label: 'On-Duty (OD)', value: od, color: 'text-blue-600', bg: 'bg-blue-50/50' },
+              { label: 'Attendance Rate', value: `${attendanceRate}%`, color: 'text-indigo-600', bg: 'bg-indigo-50/50' },
+            ].map((s) => (
+              <div key={s.label} className={`${s.bg} rounded-2xl p-3.5 shadow-sm border border-slate-100 text-center`}>
+                <div className={`text-2xl sm:text-3xl font-extrabold font-heading ${s.color}`}>{s.value}</div>
+                <div className="text-xs text-slate-500 font-medium mt-0.5">{s.label}</div>
               </div>
+            ))}
+          </div>
 
-              <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-                <div className="flex flex-wrap gap-3 mb-4">
+          {/* Mode 1: Online Roster */}
+          {attendanceMode === 'online' && (
+            <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-1 flex-wrap gap-2 min-w-64">
                   <input
                     type="text"
-                    placeholder="Search Reg No or Name..."
+                    placeholder="🔍 Search Reg No or Student Name..."
                     value={attendanceSearch}
-                    onChange={e => setAttendanceSearch(e.target.value)}
-                    className="px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-slate-50 flex-1 min-w-40"
+                    onChange={(e) => setAttendanceSearch(e.target.value)}
+                    className="px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-slate-50 flex-1 min-w-44"
                   />
                   <div className="flex gap-1">
-                    {(['All', 'P', 'A', 'OD', 'Not Marked'] as const).map(f => (
+                    {(['All', 'P', 'A', 'OD'] as const).map((f) => (
                       <button
                         key={f}
-                        onClick={() => setAttendanceFilter(f === 'Not Marked' ? 'All' : f as any)}
-                        className={`px-3 py-2 rounded-xl text-xs font-medium border ${
-                          attendanceFilter === f || (f === 'All' && attendanceFilter === 'All')
-                            ? 'bg-indigo-600 text-white border-indigo-600'
+                        onClick={() => setAttendanceFilter(f)}
+                        className={`px-3 py-2 rounded-xl text-xs font-semibold border ${
+                          attendanceFilter === f
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
                             : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
                         }`}
                       >
-                        {f}
+                        {f === 'All' ? 'All' : f === 'P' ? 'Present' : f === 'A' ? 'Absent' : 'OD'}
                       </button>
                     ))}
                   </div>
-                  <button
-                    onClick={() => setStudentStatuses(Object.fromEntries(students.map(s => [s.reg, 'P' as const])))}
-                    className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-medium"
-                  >
-                    Mark All Present
-                  </button>
-                  <button className="px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-600 hover:bg-slate-50">📤 Upload Excel</button>
-                  <button className="px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-600 hover:bg-slate-50">📥 Template</button>
-                  <button className="px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-600 hover:bg-slate-50">📊 Export</button>
                 </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-100">
-                        <th className="text-left px-3 py-2 text-xs text-slate-500 font-semibold w-8">
-                          <input type="checkbox" className="rounded" />
-                        </th>
-                        {['Reg No', 'Student Name', 'Class/Section', 'Attendance'].map(h => (
-                          <th key={h} className="text-left px-3 py-2 text-xs text-slate-500 font-semibold uppercase tracking-wide">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredStudents.map(s => {
-                        const status = studentStatuses[s.reg];
-                        return (
-                          <tr key={s.reg} className="border-b border-slate-50 hover:bg-slate-50">
-                            <td className="px-3 py-3"><input type="checkbox" className="rounded" /></td>
-                            <td className="px-3 py-3 font-mono text-xs text-slate-600">{s.reg}</td>
-                            <td className="px-3 py-3 font-medium text-slate-800">{s.name}</td>
-                            <td className="px-3 py-3 text-slate-500 text-xs">{s.class}</td>
-                            <td className="px-3 py-3">
-                              <div className="flex gap-1">
-                                {(['P', 'A', 'OD'] as const).map(st => (
-                                  <button
-                                    key={st}
-                                    onClick={() => setStudentStatuses(prev => ({ ...prev, [s.reg]: st }))}
-                                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${
-                                      status === st
-                                        ? st === 'P' ? 'bg-green-600 text-white border-green-600'
-                                          : st === 'A' ? 'bg-red-600 text-white border-red-600'
-                                          : 'bg-blue-600 text-white border-blue-600'
-                                        : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
-                                    }`}
-                                  >
-                                    {st}
-                                  </button>
-                                ))}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="mt-3 text-xs text-slate-400">
-                  Attendance: {Math.round((present / students.length) * 100)}% ({present}/{students.length} present)
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={() => {
+                      setAddStudentForm({ regNo: '', studentName: '', className: '', department: '', status: 'P' });
+                      setAddStudentError(null);
+                      setShowAddStudentModal(true);
+                    }}
+                    className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
+                  >
+                    ➕ Add Student
+                  </button>
+                  <button
+                    onClick={markAllPresent}
+                    className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-all"
+                  >
+                    ✓ Mark All Present
+                  </button>
+                  <button
+                    onClick={() => setAttendanceRecords((prev) => prev.map((s) => ({ ...s, status: 'A' })))}
+                    className="px-3 py-2 border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold"
+                  >
+                    Clear All
+                  </button>
+                  <button
+                    onClick={handleSaveAttendance}
+                    disabled={savingAttendance}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    {savingAttendance ? 'Saving...' : '💾 Save Attendance'}
+                  </button>
                 </div>
               </div>
-            </>
+
+              <div className="overflow-x-auto rounded-xl border border-slate-100">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-slate-50 border-b border-slate-100 text-xs font-semibold text-slate-500 uppercase">
+                    <tr>
+                      <th className="px-4 py-3">Reg No</th>
+                      <th className="px-4 py-3">Student Name</th>
+                      <th className="px-4 py-3">Class / Section</th>
+                      <th className="px-4 py-3">Department</th>
+                      <th className="px-4 py-3 text-center">Status</th>
+                      <th className="px-4 py-3">Remarks / Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredStudents.map((s) => (
+                      <tr key={s.regNo} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-4 py-3 font-mono font-medium text-slate-700 text-xs">{s.regNo}</td>
+                        <td className="px-4 py-3 font-semibold text-slate-800">{s.studentName}</td>
+                        <td className="px-4 py-3 text-slate-500 text-xs">{s.className || '-'}</td>
+                        <td className="px-4 py-3 text-slate-500 text-xs">{s.department || '-'}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex justify-center gap-1">
+                            {(['P', 'A', 'OD'] as const).map((st) => (
+                              <button
+                                key={st}
+                                onClick={() => updateStudentStatus(s.regNo, st)}
+                                className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${
+                                  s.status === st
+                                    ? st === 'P'
+                                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                                      : st === 'A'
+                                      ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
+                                      : 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                    : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                                }`}
+                              >
+                                {st}
+                              </button>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="text"
+                            placeholder="Optional remark..."
+                            value={s.remarks || ''}
+                            onChange={(e) =>
+                              setAttendanceRecords((prev) =>
+                                prev.map((item) => (item.regNo === s.regNo ? { ...item, remarks: e.target.value } : item))
+                              )
+                            }
+                            className="px-2.5 py-1 text-xs border border-slate-200 rounded-lg w-full focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-slate-50/50"
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
+                <span>Showing {filteredStudents.length} of {totalStudents} students</span>
+                <span className="font-semibold text-indigo-600">Total Attendance: {attendanceRate}%</span>
+              </div>
+            </div>
           )}
 
+          {/* Mode 2: QR Check-In & Scanner */}
+          {attendanceMode === 'qr' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              {/* Event Display QR Code */}
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 text-center space-y-4">
+                <div>
+                  <h3 className="font-bold font-heading text-slate-800 text-lg">Event QR Code Check-In</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">Project this QR Code on screen for student instant self check-in</p>
+                </div>
+
+                <div className="p-4 bg-indigo-50/60 rounded-2xl inline-block border-2 border-indigo-200 shadow-inner">
+                  {/* Dynamic Visual QR Code */}
+                  <svg className="w-48 h-48 mx-auto" viewBox="0 0 100 100" fill="currentColor">
+                    <rect width="100" height="100" fill="white" rx="8" />
+                    {/* Position patterns */}
+                    <rect x="5" y="5" width="30" height="30" fill="#4F46E5" rx="4" />
+                    <rect x="10" y="10" width="20" height="20" fill="white" rx="2" />
+                    <rect x="14" y="14" width="12" height="12" fill="#4F46E5" rx="1" />
+
+                    <rect x="65" y="5" width="30" height="30" fill="#4F46E5" rx="4" />
+                    <rect x="70" y="10" width="20" height="20" fill="white" rx="2" />
+                    <rect x="74" y="14" width="12" height="12" fill="#4F46E5" rx="1" />
+
+                    <rect x="5" y="65" width="30" height="30" fill="#4F46E5" rx="4" />
+                    <rect x="10" y="70" width="20" height="20" fill="white" rx="2" />
+                    <rect x="14" y="74" width="12" height="12" fill="#4F46E5" rx="1" />
+
+                    {/* Data pattern grid */}
+                    <rect x="42" y="10" width="8" height="8" fill="#4F46E5" />
+                    <rect x="52" y="18" width="8" height="8" fill="#4F46E5" />
+                    <rect x="42" y="42" width="16" height="16" fill="#4F46E5" rx="2" />
+                    <rect x="65" y="42" width="8" height="8" fill="#4F46E5" />
+                    <rect x="10" y="42" width="8" height="8" fill="#4F46E5" />
+                    <rect x="22" y="50" width="8" height="8" fill="#4F46E5" />
+                    <rect x="42" y="68" width="8" height="8" fill="#4F46E5" />
+                    <rect x="52" y="80" width="8" height="8" fill="#4F46E5" />
+                    <rect x="70" y="68" width="16" height="8" fill="#4F46E5" />
+                    <rect x="80" y="80" width="8" height="12" fill="#4F46E5" />
+                  </svg>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs flex items-center justify-between gap-2">
+                  <span className="font-mono text-slate-600 truncate">http://academic-hub.edu/checkin/{event.id}</span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard?.writeText(`http://academic-hub.edu/checkin/${event.id}`);
+                      setSaveToast('Copied QR Check-In link to clipboard!');
+                      setTimeout(() => setSaveToast(null), 2500);
+                    }}
+                    className="px-3 py-1 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700"
+                  >
+                    Copy Link
+                  </button>
+                </div>
+
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-700 font-semibold flex items-center justify-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                  Live Counter: {present} Students Checked In ({attendanceRate}%)
+                </div>
+              </div>
+
+              {/* Student Check-In Simulator / Scanner Input */}
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 space-y-4">
+                <div>
+                  <h3 className="font-bold font-heading text-slate-800 text-lg">Student Scanner Simulator</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">Scan or type Roll / Registration No to verify presence live</p>
+                </div>
+
+                {qrMessage && (
+                  <div className={`p-3 rounded-xl text-xs font-semibold ${qrMessage.type === 'success' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                    {qrMessage.text}
+                  </div>
+                )}
+
+                <form onSubmit={handleQrCheckIn} className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Enter Reg No (e.g. 22IT001, 22IT003)..."
+                    value={qrRegInput}
+                    onChange={(e) => setQrRegInput(e.target.value)}
+                    className="px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-slate-50 flex-1 font-mono uppercase"
+                  />
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-sm"
+                  >
+                    Check In
+                  </button>
+                </form>
+
+                <div>
+                  <h4 className="font-semibold text-xs text-slate-500 uppercase tracking-wider mb-2">Live Check-In Activity Log</h4>
+                  <div className="max-h-56 overflow-y-auto space-y-2 border border-slate-100 rounded-xl p-2 bg-slate-50/50">
+                    {qrLogs.length === 0 ? (
+                      <div className="text-center py-6 text-xs text-slate-400">No student check-ins recorded yet in this session.</div>
+                    ) : (
+                      qrLogs.map((log, index) => (
+                        <div key={`${log.regNo}-${index}`} className="flex items-center justify-between p-2.5 bg-white rounded-lg shadow-2xs border border-slate-100 text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                            <span className="font-mono font-bold text-slate-700">{log.regNo}</span>
+                            <span className="text-slate-600 font-medium">{log.name}</span>
+                          </div>
+                          <span className="text-slate-400 font-mono text-xs">{log.time}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Mode 3: Hard Copy Upload */}
           {attendanceMode === 'hardcopy' && (
             <div className="space-y-4">
-              {!hardCopyUploaded ? (
-                <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-100">
-                  <h3 className="font-bold font-heading text-slate-800 mb-2">Upload Signed Attendance Sheet</h3>
-                  <p className="text-sm text-slate-500 mb-6">
-                    Upload a scanned copy of the physical attendance sheet. Students who signed will be automatically marked as <span className="text-green-600 font-semibold">Present</span>, and those who did not sign will be marked as <span className="text-red-600 font-semibold">Absent</span>.
-                  </p>
-                  <div className="border-2 border-dashed border-indigo-200 rounded-2xl p-10 text-center bg-indigo-50/40">
-                    <div className="text-5xl mb-4">📋</div>
-                    <div className="text-slate-700 font-medium mb-1">Drop the signed attendance sheet here</div>
-                    <div className="text-slate-400 text-sm mb-4">Supported: PDF, JPG, PNG, TIFF</div>
-                    <button
-                      onClick={() => {
-                        setHardCopyUploaded(true);
-                        setHardCopyStatuses({
-                          '22IT001': 'P', '22IT002': 'P', '22IT003': 'A',
-                          '22IT004': 'P', '22IT005': 'P', '22IT006': 'A',
-                          '22IT007': 'P', '22IT008': 'P',
-                        });
-                      }}
-                      className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold"
-                    >
-                      Browse & Upload
-                    </button>
+              {hardCopyRows.length === 0 ? (
+                <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-100 space-y-4">
+                  <div>
+                    <h3 className="font-bold font-heading text-slate-800 text-lg mb-1 flex items-center gap-2">
+                      <span>🤖</span> Multimodal AI Vision Hard-Copy Attendance Extractor
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Upload single or multiple scanned PDFs, photos, or mobile snapshots of your physical attendance sheets. Our AI Vision API scans all documents row-by-row, detects printed/handwritten text, derives departments, checks signatures, and merges results into a single deduplicated roster.
+                    </p>
                   </div>
+
+                  {hardCopyScanError && (
+                    <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-center justify-between gap-3 text-xs text-rose-800 font-semibold">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">⚠️</span>
+                        <span>{hardCopyScanError}</span>
+                      </div>
+                      <button
+                        onClick={() => setHardCopyScanError(null)}
+                        className="px-3 py-1 bg-white border border-rose-300 rounded-lg text-rose-700 hover:bg-rose-100 transition-colors font-bold"
+                      >
+                        Dismiss & Re-scan
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
+                    <label className="block font-bold text-slate-800 text-xs uppercase tracking-wider">
+                      Attendance Sheet Type
+                    </label>
+                    <div className="flex flex-wrap items-center gap-6 text-xs font-semibold text-slate-700">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="sheetType"
+                          value="signed"
+                          checked={hardCopySheetType === 'signed'}
+                          onChange={() => setHardCopySheetType('signed')}
+                          className="text-indigo-600 focus:ring-indigo-400"
+                        />
+                        <span>☑ Signed Attendance Sheet <span className="text-slate-400 font-normal">(Signature column checked: Signed = Present, Unsigned = Absent)</span></span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="sheetType"
+                          value="participant_list"
+                          checked={hardCopySheetType === 'participant_list'}
+                          onChange={() => setHardCopySheetType('participant_list')}
+                          className="text-indigo-600 focus:ring-indigo-400"
+                        />
+                        <span>☑ Participant / Present Student List <span className="text-slate-400 font-normal">(Every extracted student marked Present)</span></span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Drag-and-Drop & Browse File Selection Area */}
+                  <div
+                    className="border-2 border-dashed border-indigo-200 rounded-2xl p-8 text-center bg-indigo-50/30 space-y-3 transition-colors hover:border-indigo-400"
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                        const droppedFiles = Array.from(e.dataTransfer.files);
+                        setSelectedHardCopyFiles((prev) => [...prev, ...droppedFiles]);
+                      }
+                    }}
+                  >
+                    <div className="text-5xl">📄</div>
+                    <div className="text-slate-700 font-medium text-sm">
+                      {hardCopyScanning
+                        ? (hardCopyProcessingProgress || 'Analyzing documents with Multimodal AI Vision API...')
+                        : 'Drop physical attendance sheets here or click Browse & Add Sheets'}
+                    </div>
+                    <div className="text-slate-400 text-xs">Supported: PDF, JPG, JPEG, PNG, Mobile Snapshots (Select multiple files simultaneously)</div>
+
+                    <div className="flex items-center justify-center gap-3 pt-2">
+                      <label className="inline-block px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-md cursor-pointer transition-all">
+                        ➕ {selectedHardCopyFiles.length > 0 ? 'Add More Sheets' : 'Browse & Add Sheets'}
+                        <input
+                          type="file"
+                          accept="image/*,.pdf"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files.length > 0) {
+                              const newFiles = Array.from(e.target.files);
+                              setSelectedHardCopyFiles((prev) => [...prev, ...newFiles]);
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Staged File List & Extract Action */}
+                  {selectedHardCopyFiles.length > 0 && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider">
+                          Staged Sheets for Extraction ({selectedHardCopyFiles.length})
+                        </h4>
+                        <button
+                          onClick={() => setSelectedHardCopyFiles([])}
+                          className="text-xs text-rose-600 hover:text-rose-800 font-semibold"
+                        >
+                          Clear All Staged Files
+                        </button>
+                      </div>
+
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {selectedHardCopyFiles.map((file, idx) => (
+                          <div key={`${file.name}-${idx}`} className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-slate-200 text-xs">
+                            <div className="flex items-center gap-3 overflow-hidden">
+                              <span className="text-lg flex-shrink-0">
+                                {file.type.includes('pdf') ? '📕' : '🖼️'}
+                              </span>
+                              <div className="truncate">
+                                <div className="font-semibold text-slate-800 truncate">{file.name}</div>
+                                <div className="text-[10px] text-slate-400">
+                                  {file.type || 'Document'} • {(file.size / 1024).toFixed(1)} KB
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => setSelectedHardCopyFiles((prev) => prev.filter((_, i) => i !== idx))}
+                              className="text-slate-400 hover:text-rose-600 font-bold px-2 py-1"
+                              title="Remove file"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="pt-2">
+                        <button
+                          onClick={() => handleHardCopyScanFile(selectedHardCopyFiles)}
+                          disabled={hardCopyScanning}
+                          className="w-full py-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-xl text-sm font-bold shadow-md disabled:opacity-60 transition-all flex items-center justify-center gap-2"
+                        >
+                          {hardCopyScanning ? (
+                            <>
+                              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                              <span>{hardCopyProcessingProgress || 'Extracting All Sheets...'}</span>
+                            </>
+                          ) : (
+                            <span>🚀 Extract All Sheets ({selectedHardCopyFiles.length})</span>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="bg-green-50 border border-green-200 rounded-2xl p-4 flex items-center gap-3">
-                    <span className="text-2xl">✅</span>
-                    <div>
-                      <div className="font-semibold text-green-800 text-sm">Hard copy processed successfully</div>
-                      <div className="text-green-600 text-xs mt-0.5">Signed names marked Present · Unsigned marked Absent</div>
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">🤖</span>
+                      <div>
+                        <div className="font-semibold text-emerald-900 text-sm">AI Vision Document Analysis Complete</div>
+                        <div className="text-emerald-700 text-xs">
+                          Extracted {hardCopyRows.length} unique student rows from {hardCopyFileName || 'scanned sheets'} ({hardCopySheetType === 'signed' ? 'Signed Sheet' : 'Participant List'}). Review & edit details below before adding to roster.
+                        </div>
+                      </div>
                     </div>
                     <button
-                      onClick={() => setHardCopyUploaded(false)}
-                      className="ml-auto text-xs text-slate-500 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-white"
+                      onClick={() => {
+                        setHardCopyRows([]);
+                        setHardCopyFileName(null);
+                        setSelectedHardCopyFiles([]);
+                        setHardCopyMultiSummary(null);
+                      }}
+                      className="text-xs text-slate-700 border border-slate-300 px-3.5 py-1.5 rounded-xl hover:bg-white bg-white font-semibold shadow-xs"
                     >
-                      Re-upload
+                      🔄 Re-scan Sheets
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-3">
-                    {[
-                      { label: 'Total', value: students.length, color: 'text-slate-700' },
-                      { label: 'Signed (Present)', value: Object.values(hardCopyStatuses).filter(v => v === 'P').length, color: 'text-green-600' },
-                      { label: 'Not Signed (Absent)', value: Object.values(hardCopyStatuses).filter(v => v === 'A').length, color: 'text-red-600' },
-                    ].map(s => (
-                      <div key={s.label} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 text-center">
-                        <div className={`text-3xl font-bold font-heading ${s.color}`}>{s.value}</div>
-                        <div className="text-xs text-slate-500 mt-1">{s.label}</div>
+                  {/* Multi-Sheet Extraction Summary Card */}
+                  {hardCopyMultiSummary && (
+                    <div className="bg-slate-900 text-white rounded-2xl p-5 shadow-sm space-y-3">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="font-bold text-sm flex items-center gap-2">
+                          <span>📊</span> Multi-Sheet Extraction Summary
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          Processed {hardCopyMultiSummary.totalFilesUploaded} sheet(s)
+                        </div>
                       </div>
-                    ))}
-                  </div>
 
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-slate-100 bg-slate-50">
-                          {['Reg No', 'Student Name', 'Class', 'Signature Status'].map(h => (
-                            <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {students.map(s => {
-                          const signed = hardCopyStatuses[s.reg] === 'P';
-                          return (
-                            <tr key={s.reg} className="border-b border-slate-50 hover:bg-slate-50">
-                              <td className="px-4 py-3 font-mono text-xs text-slate-600">{s.reg}</td>
-                              <td className="px-4 py-3 font-medium text-slate-800">{s.name}</td>
-                              <td className="px-4 py-3 text-slate-500 text-xs">{s.class}</td>
-                              <td className="px-4 py-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                        <div className="bg-slate-800 p-3 rounded-xl">
+                          <div className="text-slate-400 text-[10px]">Total Files</div>
+                          <div className="text-base font-bold text-white">
+                            {hardCopyMultiSummary.totalFilesUploaded} ({hardCopyMultiSummary.successfulFilesCount} Success)
+                          </div>
+                        </div>
+                        <div className="bg-slate-800 p-3 rounded-xl">
+                          <div className="text-slate-400 text-[10px]">Raw Extracted Rows</div>
+                          <div className="text-base font-bold text-indigo-400">{hardCopyMultiSummary.totalRowsExtracted}</div>
+                        </div>
+                        <div className="bg-slate-800 p-3 rounded-xl">
+                          <div className="text-slate-400 text-[10px]">Unique Students</div>
+                          <div className="text-base font-bold text-emerald-400">{hardCopyMultiSummary.uniqueStudents}</div>
+                        </div>
+                        <div className="bg-slate-800 p-3 rounded-xl">
+                          <div className="text-slate-400 text-[10px]">Duplicates Merged</div>
+                          <div className="text-base font-bold text-amber-400">{hardCopyMultiSummary.duplicatesRemoved}</div>
+                        </div>
+                      </div>
+
+                      {hardCopyMultiSummary.fileResults && hardCopyMultiSummary.fileResults.length > 0 && (
+                        <div className="space-y-1.5 pt-1">
+                          <div className="text-[11px] font-semibold text-slate-400">File-by-File Status:</div>
+                          <div className="space-y-1 text-xs max-h-32 overflow-y-auto pr-1">
+                            {hardCopyMultiSummary.fileResults.map((fr: any, i: number) => (
+                              <div key={i} className="flex items-center justify-between bg-slate-800/80 px-3 py-1.5 rounded-lg">
+                                <span className="truncate max-w-[220px] text-slate-300">{fr.fileName}</span>
                                 <div className="flex items-center gap-2">
-                                  <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${signed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                                    {signed ? '✓ Signed — Present' : '✗ Not Signed — Absent'}
-                                  </span>
-                                  <button
-                                    onClick={() => setHardCopyStatuses(prev => ({ ...prev, [s.reg]: prev[s.reg] === 'P' ? 'A' : 'P' }))}
-                                    className="text-xs text-slate-400 hover:text-indigo-600 underline"
-                                  >
-                                    Override
-                                  </button>
+                                  {fr.status === 'success' ? (
+                                    <span className="text-emerald-400 font-bold text-[11px]">✓ {fr.extractedCount} rows</span>
+                                  ) : (
+                                    <span className="text-rose-400 font-bold text-[11px]">✗ Failed ({fr.error})</span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-4">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div>
+                        <h4 className="font-bold text-slate-800 text-sm">AI Extracted Roster Preview</h4>
+                        <p className="text-xs text-slate-500">
+                          These students will become the exclusive Online Roster for this attendance session upon confirmation.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-3 py-1 bg-indigo-100 text-indigo-800 text-xs font-bold rounded-full">
+                          Total Extracted: {hardCopyRows.length}
+                        </span>
+                        <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-full">
+                          Present: {hardCopyRows.filter(r => r.status === 'P').length}
+                        </span>
+                        <span className="px-3 py-1 bg-rose-100 text-rose-800 text-xs font-bold rounded-full">
+                          Absent: {hardCopyRows.filter(r => r.status === 'A').length}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto border border-slate-100 rounded-xl">
+                      <table className="w-full text-sm text-left">
+                        <thead className="bg-slate-50 text-xs font-semibold text-slate-500 uppercase">
+                          <tr>
+                            <th className="px-4 py-2.5">Reg No</th>
+                            <th className="px-4 py-2.5">Student Name</th>
+                            <th className="px-4 py-2.5">Class / Section</th>
+                            <th className="px-4 py-2.5">Department</th>
+                            <th className="px-4 py-2.5 text-center">Status</th>
+                            <th className="px-4 py-2.5 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 text-xs">
+                          {hardCopyRows.map((s: any, idx) => (
+                            <tr key={`${s.regNo}-${idx}`} className={`hover:bg-slate-50 transition-colors ${s.isUncertain ? 'bg-amber-50/40' : ''}`}>
+                              <td className="px-4 py-3 font-mono font-medium text-slate-700">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span>{s.regNo}</span>
+                                  {s.isMatchedToRoster && (
+                                    <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[10px] font-bold" title="Matched to existing event roster">
+                                      ✓ Matched
+                                    </span>
+                                  )}
+                                  {(s.isUncertain || (s.uncertainFields?.length > 0 && s.uncertainFields[0] === 'Needs Review')) && (
+                                    <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded text-[10px] font-bold" title="Low AI confidence — please verify this row">
+                                      ⚠️ Needs Review
+                                    </span>
+                                  )}
                                 </div>
                               </td>
+                              <td className="px-4 py-3 font-semibold text-slate-800">{s.studentName}</td>
+                              <td className="px-4 py-3 text-slate-500">{s.className || '-'}</td>
+                              <td className="px-4 py-3 text-slate-500">{s.department || '-'}</td>
+                              <td className="px-4 py-3 text-center">
+                                <span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
+                                  s.status === 'P'
+                                    ? 'bg-emerald-100 text-emerald-700'
+                                    : s.status === 'A'
+                                    ? 'bg-rose-100 text-rose-700'
+                                    : 'bg-blue-100 text-blue-700'
+                                }`}>
+                                  {s.status === 'P' ? (s.signaturePresent ? '✓ Signed — Present' : '✓ Listed — Present') : s.status === 'A' ? '✗ Unsigned — Absent' : '📜 On-Duty (OD)'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right space-x-2">
+                                <button
+                                  onClick={() => {
+                                    setEditingHardCopyIndex(idx);
+                                    setEditingHardCopyData({ ...s });
+                                  }}
+                                  className="text-xs text-indigo-600 hover:text-indigo-800 underline font-semibold"
+                                >
+                                  ✏️ Edit
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setHardCopyRows(prev => prev.filter((_, i) => i !== idx));
+                                  }}
+                                  className="text-xs text-rose-600 hover:text-rose-800 font-semibold"
+                                >
+                                  🗑️ Remove
+                                </button>
+                              </td>
                             </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="flex items-center justify-between flex-wrap gap-3 pt-2">
+                      <button
+                        onClick={() => {
+                          setAddStudentForm({ regNo: '', studentName: '', className: '', department: '', status: 'P' });
+                          setAddStudentError(null);
+                          setShowAddStudentModal(true);
+                        }}
+                        className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold"
+                      >
+                        ➕ Add Missing Student Row
+                      </button>
+
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => {
+                            setHardCopyRows([]);
+                            setHardCopyFileName(null);
+                          }}
+                          className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl text-xs font-semibold hover:bg-slate-50"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleConfirmHardCopyImport}
+                          disabled={hardCopyScanning}
+                          className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md disabled:opacity-50 flex items-center gap-1.5"
+                        >
+                          {hardCopyScanning ? 'Importing Roster...' : '💾 Confirm & Add to Online Roster'}
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <button className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium">
-                    💾 Save Hard Copy Attendance
-                  </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Mode 4: Excel Import & Export */}
+          {attendanceMode === 'excel' && (
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 space-y-6">
+              <div>
+                <h3 className="font-bold font-heading text-slate-800 text-lg">Excel / CSV Student Roster Import</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Upload a student list containing register number, name, department, class, and section. Attendance status is manually marked later.</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
+                  <h4 className="font-semibold text-sm text-slate-800">Export & Templates</h4>
+                  <p className="text-xs text-slate-500">Download a starter template or export the current attendance data for the selected event.</p>
+
+                  <div className="flex flex-col gap-2.5">
+                    <button
+                      onClick={() => {
+                        const csvContent = "Register Number,Student Name,Department,Class,Section\n221T001,Arun Kumar M,IT,III,A\n221T002,Bhavya S,IT,III,A\n";
+                        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = `Student_Attendance_Template_${event.id}.csv`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-2xs"
+                    >
+                      📥 Download Student Template (.csv)
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        const header = 'Register Number,Student Name,Department,Class,Section,Attendance Status,Remarks\n';
+                        const rows = attendanceRecords.map(r => `${r.regNo},"${r.studentName}","${r.department || ''}","${r.className || ''}","${r.className || ''}","${r.status || ''}","${r.remarks || ''}"`).join('\n');
+                        const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `Attendance_Report_${event.id}_${event.name.replace(/\s+/g, '_')}.csv`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-sm"
+                    >
+                      📊 Export Current Attendance CSV
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-5 bg-indigo-50/40 rounded-2xl border border-indigo-100 space-y-4">
+                  <h4 className="font-semibold text-sm text-indigo-900">Upload Student List</h4>
+                  <p className="text-xs text-slate-500">Supported: .xlsx, .xls, .csv. Only student details are imported; attendance is marked later.</p>
+
+                  <div className="border-2 border-dashed border-indigo-200 rounded-xl p-5 text-center bg-white">
+                    <div className="text-3xl mb-2">📤</div>
+                    {uploadedExcelName ? (
+                      <div className="text-xs font-bold text-emerald-700 mb-2">Uploaded: {uploadedExcelName}</div>
+                    ) : (
+                      <div className="text-xs text-slate-600 mb-2 font-medium">Select student roster file</div>
+                    )}
+                    <label className="px-4 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-xl cursor-pointer hover:bg-indigo-700 inline-block shadow-2xs">
+                      Browse File
+                      <input
+                        type="file"
+                        accept=".csv,.xlsx,.xls"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+
+                          const allowed = ['csv', 'xlsx', 'xls'];
+                          const ext = file.name.split('.').pop()?.toLowerCase();
+                          if (!ext || !allowed.includes(ext)) {
+                            setSaveToast('Unsupported file type. Please upload .xlsx, .xls, or .csv only.');
+                            setTimeout(() => setSaveToast(null), 3000);
+                            return;
+                          }
+
+                          setExcelImportLoading(true);
+                          setUploadedExcelName(file.name);
+
+                          try {
+                            const buffer = await file.arrayBuffer();
+                            const workbook = XLSX.read(buffer, { type: 'array' });
+                            const sheetName = workbook.SheetNames[0];
+                            const sheet = workbook.Sheets[sheetName];
+                            const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' }) as Record<string, unknown>[];
+
+                            const normalizedRows: Array<{ regNo: string; studentName: string; department: string; className: string; status: 'Valid' | 'Duplicate' | 'Invalid'; reason?: string }> = [];
+                            const seenInExcel = new Set<string>();
+                            let validStudents = 0;
+                            let duplicateCount = 0;
+                            let invalidRows = 0;
+
+                            for (const row of rows) {
+                              const rawKeys = Object.keys(row);
+                              const getValue = (...searchKeys: string[]) => {
+                                for (const sk of searchKeys) {
+                                  for (const k of rawKeys) {
+                                    if (
+                                      k.trim().toLowerCase() === sk.trim().toLowerCase() ||
+                                      k.trim().toLowerCase().replace(/[\s_\-\/]/g, '') === sk.trim().toLowerCase().replace(/[\s_\-\/]/g, '')
+                                    ) {
+                                      const val = row[k];
+                                      if (val !== undefined && val !== null && String(val).trim() !== '') {
+                                        return String(val).trim();
+                                      }
+                                    }
+                                  }
+                                }
+                                return '';
+                              };
+
+                              const regNo = getValue('Register Number', 'Register No', 'Reg No', 'Reg Number', 'Registration Number', 'Registration No', 'RegisterNumber');
+                              const studentName = getValue('Student Name', 'Name', 'StudentName', 'Student');
+                              const departmentRaw = getValue('Department', 'Dept', 'Department Name', 'DepartmentName');
+                              const classValue = getValue('Class', 'Year', 'Year of Study');
+                              const section = getValue('Section', 'Sec');
+                              const combinedClass = getValue('Class / Section', 'Class/Section', 'Class Section', 'ClassSection') || [classValue, section].filter(Boolean).join(' ');
+                              const finalDepartment = deriveDepartment(departmentRaw, combinedClass);
+
+                              if (!regNo || !studentName) {
+                                let reason = 'Invalid – Missing required fields';
+                                if (!regNo && !studentName) reason = 'Invalid – Registration Number & Student Name missing';
+                                else if (!regNo) reason = 'Invalid – Registration Number missing';
+                                else if (!studentName) reason = 'Invalid – Student Name missing';
+
+                                normalizedRows.push({
+                                  regNo: regNo || '-',
+                                  studentName: studentName || '-',
+                                  department: finalDepartment,
+                                  className: combinedClass || '-',
+                                  status: 'Invalid',
+                                  reason,
+                                });
+                                invalidRows += 1;
+                                continue;
+                              }
+
+                              const dupKey = regNo.toLowerCase().trim();
+                              if (seenInExcel.has(dupKey)) {
+                                normalizedRows.push({
+                                  regNo,
+                                  studentName,
+                                  department: finalDepartment,
+                                  className: combinedClass || '-',
+                                  status: 'Duplicate',
+                                  reason: 'Invalid – Duplicate Registration Number',
+                                });
+                                duplicateCount += 1;
+                                continue;
+                              }
+
+                              seenInExcel.add(dupKey);
+                              normalizedRows.push({
+                                regNo,
+                                studentName,
+                                department: finalDepartment,
+                                className: combinedClass || '-',
+                                status: 'Valid',
+                              });
+                              validStudents += 1;
+                            }
+
+                            const sortedNormalizedRows = sortAttendanceRecords(normalizedRows);
+                            setExcelImportRows(sortedNormalizedRows);
+                            setExcelImportMeta({
+                              totalRows: rows.length,
+                              validStudents,
+                              duplicateCount,
+                              invalidRows,
+                            });
+                            setSaveToast(`Preview ready for ${file.name}. Review and confirm import.`);
+                            setTimeout(() => setSaveToast(null), 3000);
+                          } catch (error) {
+                            setSaveToast('Failed to read the uploaded file. Please check the format and try again.');
+                            setTimeout(() => setSaveToast(null), 3000);
+                          } finally {
+                            setExcelImportLoading(false);
+                          }
+                        }}
+                      />
+                    </label>
+                    {excelImportLoading && <div className="text-xs text-indigo-600 font-medium mt-2">Processing file...</div>}
+                  </div>
+
+                  {excelImportRows.length > 0 && excelImportMeta && (
+                    <div className="space-y-4 border border-slate-200 rounded-xl bg-white p-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-slate-600">
+                        <div className="bg-slate-50 border border-slate-200/80 rounded-lg p-2.5">
+                          <span className="block text-slate-400 font-medium text-[11px]">Total Rows Found in Excel</span>
+                          <span className="font-bold text-slate-800 text-sm">{excelImportMeta.totalRows}</span>
+                        </div>
+                        <div className="bg-emerald-50/70 border border-emerald-100 rounded-lg p-2.5">
+                          <span className="block text-emerald-600 font-medium text-[11px]">Valid Students</span>
+                          <span className="font-bold text-emerald-800 text-sm">{excelImportMeta.validStudents}</span>
+                        </div>
+                        <div className="bg-rose-50/70 border border-rose-100 rounded-lg p-2.5">
+                          <span className="block text-rose-600 font-medium text-[11px]">Invalid Students</span>
+                          <span className="font-bold text-rose-800 text-sm">{excelImportMeta.invalidRows}</span>
+                        </div>
+                        <div className="bg-amber-50/70 border border-amber-100 rounded-lg p-2.5">
+                          <span className="block text-amber-600 font-medium text-[11px]">Duplicate Register Numbers</span>
+                          <span className="font-bold text-amber-800 text-sm">{excelImportMeta.duplicateCount}</span>
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto max-h-64 border border-slate-200 rounded-xl">
+                        <table className="w-full text-xs">
+                          <thead className="bg-slate-100 text-slate-600 uppercase">
+                            <tr>
+                              <th className="px-2 py-2 text-left">Reg No</th>
+                              <th className="px-2 py-2 text-left">Student Name</th>
+                              <th className="px-2 py-2 text-left">Class / Section</th>
+                              <th className="px-2 py-2 text-left">Department</th>
+                              <th className="px-2 py-2 text-left">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {excelImportRows.map((row, index) => (
+                              <tr key={`${row.regNo}-${index}`} className="border-t border-slate-100">
+                                <td className="px-2 py-2 font-mono font-medium text-slate-800">{row.regNo}</td>
+                                <td className="px-2 py-2">{row.studentName}</td>
+                                <td className="px-2 py-2">{row.className}</td>
+                                <td className="px-2 py-2">{row.department}</td>
+                                <td className="px-2 py-2">
+                                  <span className={`px-2 py-1 rounded-full text-[10px] font-semibold ${row.status === 'Valid' ? 'bg-emerald-100 text-emerald-700' : row.status === 'Duplicate' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>
+                                    {row.reason ? `${row.status} (${row.reason})` : row.status}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 justify-end">
+                        <button
+                          onClick={() => {
+                            setExcelImportRows([]);
+                            setExcelImportMeta(null);
+                            setUploadedExcelName(null);
+                          }}
+                          className="px-3 py-2 border border-slate-200 text-slate-600 rounded-xl text-xs font-semibold hover:bg-slate-50"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={async () => {
+                            const validStudents = excelImportRows.filter(row => row.status === 'Valid').map(row => ({
+                              regNo: row.regNo,
+                              studentName: row.studentName,
+                              department: row.department || '-',
+                              className: row.className || '-',
+                            }));
+
+                            if (!validStudents.length) {
+                              setSaveToast('No valid students available to import.');
+                              setTimeout(() => setSaveToast(null), 2500);
+                              return;
+                            }
+
+                            setExcelImportLoading(true);
+                            const result = await importEventAttendanceRosterApi(eventId, validStudents);
+                            setExcelImportLoading(false);
+
+                            let importedRecords: StudentAttendanceRecord[] = [];
+                            if (result && result.success && 'data' in result && result.data?.records?.length) {
+                              importedRecords = sortAttendanceRecords(result.data.records);
+                              setSaveToast(`Imported ${result.data.importedCount} students to the event roster.`);
+                            } else {
+                              importedRecords = sortAttendanceRecords(validStudents.map(st => ({
+                                eventId,
+                                regNo: st.regNo,
+                                studentName: st.studentName,
+                                department: st.department || '-',
+                                className: st.className || '-',
+                                status: '',
+                                remarks: '',
+                              })));
+                              setSaveToast(`Imported ${validStudents.length} students to roster.`);
+                            }
+
+                            setAttendanceRecords(importedRecords);
+                            setExcelImportRows([]);
+                            setExcelImportMeta(null);
+                            setUploadedExcelName(null);
+                            setTimeout(() => setSaveToast(null), 3000);
+                          }}
+                          disabled={excelImportLoading}
+                          className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold disabled:opacity-50"
+                        >
+                          {excelImportLoading ? 'Importing...' : 'Confirm Import'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Mode 5: On-Duty (OD) Recommendation Pass Generator */}
+          {attendanceMode === 'od_generator' && (
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 space-y-6">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                <div>
+                  <h3 className="font-bold font-heading text-slate-800 text-lg">On-Duty (OD) Leave Recommendation Generator</h3>
+                  <p className="text-xs text-slate-500">Generate printable OD recommendation letter for HOD & Principal sign-off</p>
+                </div>
+                <button
+                  onClick={() => window.print()}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm"
+                >
+                  🖨️ Print / Save PDF
+                </button>
+              </div>
+
+              {/* Formal Document Box */}
+              <div className="p-8 border-2 border-slate-300 rounded-2xl bg-white space-y-6 max-w-3xl mx-auto shadow-inner text-slate-800">
+                {/* Letterhead Header */}
+                <div className="text-center border-b-2 border-indigo-600 pb-4 space-y-1">
+                  <h2 className="text-lg font-bold font-heading uppercase text-indigo-900 tracking-wider">Academic Event Hub — Department of {event.department}</h2>
+                  <p className="text-xs text-slate-500">Official Student On-Duty (OD) Recommendation Form</p>
+                  <p className="text-xs text-slate-400 font-mono">Ref: OD/{event.academicYear}/{event.id}</p>
+                </div>
+
+                {/* Event Summary */}
+                <div className="bg-slate-50 p-4 rounded-xl text-xs space-y-1.5 border border-slate-200">
+                  <div><strong>Event Name:</strong> {event.name}</div>
+                  <div><strong>Event Date:</strong> {event.date} ({event.startTime} - {event.endTime})</div>
+                  <div><strong>Venue:</strong> {event.venue}</div>
+                  <div><strong>Faculty Coordinator:</strong> {typeof event.coordinator === 'string' ? event.coordinator : event.coordinator || 'Department Faculty'}</div>
+                </div>
+
+                {/* Recommended Students List */}
+                <div className="space-y-2">
+                  <h4 className="font-bold text-xs uppercase text-slate-700 tracking-wide">List of Recommended Students (Present / On-Duty)</h4>
+                  <table className="w-full text-xs text-left border border-slate-300 border-collapse">
+                    <thead className="bg-slate-100 text-slate-700">
+                      <tr>
+                        <th className="border border-slate-300 px-3 py-2">S.No</th>
+                        <th className="border border-slate-300 px-3 py-2">Reg No</th>
+                        <th className="border border-slate-300 px-3 py-2">Student Name</th>
+                        <th className="border border-slate-300 px-3 py-2">Class</th>
+                        <th className="border border-slate-300 px-3 py-2 text-center">OD Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {attendanceRecords.filter(s => s.status === 'OD' || s.status === 'P').map((s, idx) => (
+                        <tr key={s.regNo}>
+                          <td className="border border-slate-300 px-3 py-2 text-center">{idx + 1}</td>
+                          <td className="border border-slate-300 px-3 py-2 font-mono font-semibold">{s.regNo}</td>
+                          <td className="border border-slate-300 px-3 py-2">{s.studentName}</td>
+                          <td className="border border-slate-300 px-3 py-2">{s.className}</td>
+                          <td className="border border-slate-300 px-3 py-2 text-center font-bold text-blue-700">
+                            {s.status === 'OD' ? 'On-Duty (Approved)' : 'Present (Attended)'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Signatures */}
+                <div className="grid grid-cols-2 gap-8 pt-10 text-xs">
+                  <div className="text-center border-t border-slate-300 pt-2 font-semibold text-slate-700">
+                    Faculty Coordinator Signature
+                  </div>
+                  <div className="text-center border-t border-slate-300 pt-2 font-semibold text-slate-700 flex flex-col items-center">
+                    <span className="text-emerald-600 font-bold text-xs mb-1">✓ Digitally Recommended</span>
+                    HOD / Principal Approval
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -1524,6 +2784,265 @@ Attendance: ${event.attendance}%</p>
               <div className="flex gap-3">
                 <button onClick={() => setShowOtherDocModal(false)} className="flex-1 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
                 <button onClick={() => setShowOtherDocModal(false)} className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium">Save Document</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal: Add Student Manually */}
+      {showAddStudentModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl p-6 shadow-xl max-w-md w-full border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-slate-800 text-base">➕ Add Student to Roster</h3>
+              <button
+                onClick={() => {
+                  setShowAddStudentModal(false);
+                  setAddStudentError(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 font-bold text-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            {addStudentError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs font-semibold text-rose-700 flex items-center gap-2">
+                <span>⚠️</span>
+                <span>{addStudentError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleAddStudentSubmit} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Register Number <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. 221T009"
+                  value={addStudentForm.regNo}
+                  onChange={(e) => {
+                    setAddStudentForm((prev) => ({ ...prev, regNo: e.target.value }));
+                    setAddStudentError(null);
+                  }}
+                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl font-mono uppercase focus:ring-2 focus:ring-indigo-400 focus:outline-none bg-slate-50"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Student Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Harish K"
+                  value={addStudentForm.studentName}
+                  onChange={(e) => {
+                    setAddStudentForm((prev) => ({ ...prev, studentName: e.target.value }));
+                    setAddStudentError(null);
+                  }}
+                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-indigo-400 focus:outline-none bg-slate-50"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Class / Section</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. III IT A"
+                    value={addStudentForm.className}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const derived = deriveDepartment(addStudentForm.department, val);
+                      setAddStudentForm((prev) => ({
+                        ...prev,
+                        className: val,
+                        department: prev.department && prev.department !== '-' ? prev.department : derived,
+                      }));
+                    }}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-400 focus:outline-none bg-slate-50"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Department</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Information Technology"
+                    value={addStudentForm.department}
+                    onChange={(e) => setAddStudentForm((prev) => ({ ...prev, department: e.target.value }))}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-400 focus:outline-none bg-slate-50"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Attendance Status</label>
+                <div className="flex gap-2">
+                  {(['P', 'A', 'OD'] as const).map((st) => (
+                    <button
+                      type="button"
+                      key={st}
+                      onClick={() => setAddStudentForm((prev) => ({ ...prev, status: st }))}
+                      className={`flex-1 py-2 rounded-xl font-bold border transition-all text-xs ${
+                        addStudentForm.status === st
+                          ? st === 'P'
+                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                            : st === 'A'
+                            ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
+                            : 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                          : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      {st === 'P' ? '✓ Present (P)' : st === 'A' ? '✗ Absent (A)' : '📜 On-Duty (OD)'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddStudentModal(false);
+                    setAddStudentError(null);
+                  }}
+                  className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl font-semibold hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-md"
+                >
+                  ➕ Add Student
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Extracted Hard Copy Row */}
+      {editingHardCopyIndex !== null && editingHardCopyData && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl p-6 shadow-xl max-w-md w-full border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-slate-800 text-base">✏️ Edit Extracted Student Details</h3>
+              <button
+                onClick={() => {
+                  setEditingHardCopyIndex(null);
+                  setEditingHardCopyData(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 font-bold text-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Register Number</label>
+                <input
+                  type="text"
+                  value={editingHardCopyData.regNo}
+                  onChange={(e) => setEditingHardCopyData({ ...editingHardCopyData, regNo: e.target.value })}
+                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl font-mono uppercase focus:ring-2 focus:ring-indigo-400 focus:outline-none bg-slate-50"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Student Name</label>
+                <input
+                  type="text"
+                  value={editingHardCopyData.studentName}
+                  onChange={(e) => setEditingHardCopyData({ ...editingHardCopyData, studentName: e.target.value })}
+                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-indigo-400 focus:outline-none bg-slate-50"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Class / Section</label>
+                  <input
+                    type="text"
+                    value={editingHardCopyData.className}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const derived = deriveDepartment(editingHardCopyData.department, val);
+                      setEditingHardCopyData({
+                        ...editingHardCopyData,
+                        className: val,
+                        department: derived,
+                      });
+                    }}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-400 focus:outline-none bg-slate-50"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Department</label>
+                  <input
+                    type="text"
+                    value={editingHardCopyData.department}
+                    onChange={(e) => setEditingHardCopyData({ ...editingHardCopyData, department: e.target.value })}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-400 focus:outline-none bg-slate-50"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Attendance Status</label>
+                <div className="flex gap-2">
+                  {(['P', 'A', 'OD'] as const).map((st) => (
+                    <button
+                      type="button"
+                      key={st}
+                      onClick={() => setEditingHardCopyData({ ...editingHardCopyData, status: st })}
+                      className={`flex-1 py-2 rounded-xl font-bold border transition-all text-xs ${
+                        editingHardCopyData.status === st
+                          ? st === 'P'
+                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                            : st === 'A'
+                            ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
+                            : 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                          : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      {st === 'P' ? '✓ Present (P)' : st === 'A' ? '✗ Absent (A)' : '📜 On-Duty (OD)'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingHardCopyIndex(null);
+                    setEditingHardCopyData(null);
+                  }}
+                  className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl font-semibold hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (editingHardCopyIndex !== null && editingHardCopyData) {
+                      const updated = [...hardCopyRows];
+                      updated[editingHardCopyIndex] = editingHardCopyData;
+                      setHardCopyRows(sortAttendanceRecords(updated));
+                      setEditingHardCopyIndex(null);
+                      setEditingHardCopyData(null);
+                    }
+                  }}
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-md"
+                >
+                  Save Changes
+                </button>
               </div>
             </div>
           </div>

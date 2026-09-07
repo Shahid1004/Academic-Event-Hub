@@ -1,22 +1,31 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend, CartesianGrid } from 'recharts';
-import { sampleEvents } from '../data/sampleData';
+import type { EventRecord } from '../types';
+import { getEvents } from '../services/api';
 
 const COLORS = ['#4F46E5', '#7C3AED', '#0EA5E9', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#14B8A6', '#F97316', '#6366F1'];
 
 const months = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
 
-export default function Analytics() {
-  const [dept, setDept] = useState<'ALL' | 'IT' | 'AIDS' | 'BOTH'>('ALL');
-  const [year, setYear] = useState('2025-26');
+interface AnalyticsProps { academicYear?: string; }
 
-  const events = dept === 'ALL' ? sampleEvents : sampleEvents.filter(e => e.department === dept || (dept !== 'BOTH' && e.department === 'BOTH'));
+export default function Analytics({ academicYear = '' }: AnalyticsProps) {
+  const [dept, setDept] = useState<'ALL' | 'IT' | 'AIDS' | 'BOTH'>('ALL');
+  const [year, setYear] = useState(academicYear || '2025-26');
+  const [eventsData, setEventsData] = useState<EventRecord[]>([]);
+
+  useEffect(() => {
+    getEvents({ academicYear: academicYear || undefined }).then(setEventsData).catch(() => setEventsData([]));
+    setYear(academicYear || '2025-26');
+  }, [academicYear]);
+
+  const events = dept === 'ALL' ? eventsData : eventsData.filter(e => e.department === dept || (dept !== 'BOTH' && e.department === 'BOTH'));
 
   const monthlyData = months.map(m => ({
     month: m,
-    IT: sampleEvents.filter(e => e.department === 'IT' && new Date(e.date).toLocaleString('en', { month: 'short' }) === m).length,
-    AIDS: sampleEvents.filter(e => e.department === 'AIDS' && new Date(e.date).toLocaleString('en', { month: 'short' }) === m).length,
-    BOTH: sampleEvents.filter(e => e.department === 'BOTH' && new Date(e.date).toLocaleString('en', { month: 'short' }) === m).length,
+    IT: eventsData.filter(e => e.department === 'IT' && new Date(e.date).toLocaleString('en', { month: 'short' }) === m).length,
+    AIDS: eventsData.filter(e => e.department === 'AIDS' && new Date(e.date).toLocaleString('en', { month: 'short' }) === m).length,
+    BOTH: eventsData.filter(e => e.department === 'BOTH' && new Date(e.date).toLocaleString('en', { month: 'short' }) === m).length,
   }));
 
   const typeData = ['Workshop', 'Seminar', 'Hackathon', 'FDP', 'Webinar', 'Guest Lecture', 'Training Event', 'Conference', 'Symposium', 'Vervathon'].map(type => ({
@@ -24,9 +33,9 @@ export default function Analytics() {
   })).filter(d => d.count > 0);
 
   const deptData = [
-    { name: 'IT', value: sampleEvents.filter(e => e.department === 'IT').length },
-    { name: 'AIDS', value: sampleEvents.filter(e => e.department === 'AIDS').length },
-    { name: 'BOTH', value: sampleEvents.filter(e => e.department === 'BOTH').length },
+    { name: 'IT', value: eventsData.filter(e => e.department === 'IT').length },
+    { name: 'AIDS', value: eventsData.filter(e => e.department === 'AIDS').length },
+    { name: 'BOTH', value: eventsData.filter(e => e.department === 'BOTH').length },
   ];
 
   const attendanceData = events.filter(e => e.attendance > 0).map(e => ({
@@ -42,8 +51,8 @@ export default function Analytics() {
   ];
 
   const semesterData = [
-    { semester: 'Sem I', IT: sampleEvents.filter(e => e.department === 'IT' && e.semester === 'I').length, AIDS: sampleEvents.filter(e => e.department === 'AIDS' && e.semester === 'I').length, BOTH: sampleEvents.filter(e => e.department === 'BOTH' && e.semester === 'I').length },
-    { semester: 'Sem II', IT: sampleEvents.filter(e => e.department === 'IT' && e.semester === 'II').length, AIDS: sampleEvents.filter(e => e.department === 'AIDS' && e.semester === 'II').length, BOTH: sampleEvents.filter(e => e.department === 'BOTH' && e.semester === 'II').length },
+    { semester: 'Odd semester', IT: eventsData.filter(e => e.department === 'IT' && e.semester === 'I').length, AIDS: eventsData.filter(e => e.department === 'AIDS' && e.semester === 'I').length, BOTH: eventsData.filter(e => e.department === 'BOTH' && e.semester === 'I').length },
+    { semester: 'Even semester', IT: eventsData.filter(e => e.department === 'IT' && e.semester === 'II').length, AIDS: eventsData.filter(e => e.department === 'AIDS' && e.semester === 'II').length, BOTH: eventsData.filter(e => e.department === 'BOTH' && e.semester === 'II').length },
   ];
 
   const stats = [
@@ -187,8 +196,8 @@ export default function Analytics() {
           <h3 className="font-bold font-heading text-slate-800 mb-4">IT vs AIDS Comparison</h3>
           <div className="space-y-4">
             {[
-              { label: 'Events', it: sampleEvents.filter(e => e.department === 'IT').length, aids: sampleEvents.filter(e => e.department === 'AIDS').length },
-              { label: 'Participants', it: sampleEvents.filter(e => e.department === 'IT').reduce((a,e) => a+e.actualParticipants, 0), aids: sampleEvents.filter(e => e.department === 'AIDS').reduce((a,e) => a+e.actualParticipants, 0) },
+              { label: 'Events', it: eventsData.filter(e => e.department === 'IT').length, aids: eventsData.filter(e => e.department === 'AIDS').length },
+              { label: 'Participants', it: eventsData.filter(e => e.department === 'IT').reduce((a,e) => a+e.actualParticipants, 0), aids: eventsData.filter(e => e.department === 'AIDS').reduce((a,e) => a+e.actualParticipants, 0) },
               { label: 'Avg Attendance', it: 91, aids: 92 },
             ].map(row => (
               <div key={row.label}>

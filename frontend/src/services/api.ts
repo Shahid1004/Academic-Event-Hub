@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AppSettings, CreateEventPayload, DashboardSummary, EventRecord, UserProfile } from '../types';
+import type { AppSettings, AttendanceStatus, AttendanceSummary, CreateEventPayload, DashboardSummary, EventRecord, StudentAttendanceRecord, UserProfile } from '../types';
 
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -195,4 +195,167 @@ export async function getUsers() {
     { headers: { Authorization: `Bearer ${getToken()}` } }
   );
   return response.data.users;
+}
+
+export async function getEventAttendanceApi(eventId: string) {
+  try {
+    const response = await axios.get<{
+      success: boolean;
+      data: { eventId: string; summary: AttendanceSummary; records: StudentAttendanceRecord[] };
+    }>(`${apiUrl}/api/attendance/event/${eventId}`, {
+      headers: { Authorization: `Bearer ${getToken()}` }
+    });
+    return response.data.data;
+  } catch (err) {
+    console.warn('API getEventAttendance failed, using local mode fallback:', err);
+    return null;
+  }
+}
+
+export async function saveEventAttendanceApi(eventId: string, records: StudentAttendanceRecord[]) {
+  try {
+    const response = await axios.post<{
+      success: boolean;
+      summary: AttendanceSummary;
+      records: StudentAttendanceRecord[];
+    }>(`${apiUrl}/api/attendance/event/${eventId}/batch`, { records }, {
+      headers: { Authorization: `Bearer ${getToken()}` }
+    });
+    return response.data;
+  } catch (err) {
+    console.warn('API saveEventAttendance failed, using local mode fallback:', err);
+    return null;
+  }
+}
+
+export async function importEventAttendanceRosterApi(eventId: string, students: Array<{ regNo: string; studentName: string; department?: string; className?: string }>) {
+  try {
+    const token = getToken();
+    if (!token) {
+      console.error('No authentication token found. Please log in again.');
+      return { success: false, message: 'Authentication required. Please log in again.' };
+    }
+
+    const response = await axios.post<{
+      success: boolean;
+      message: string;
+      data: {
+        importedCount: number;
+        duplicates: Array<{ regNo: string; studentName: string; reason: string }>;
+        invalidRows: Array<{ row: Record<string, string>; reason: string }>;
+        existingMatches: number;
+        summary: AttendanceSummary;
+        records: StudentAttendanceRecord[];
+      };
+    }>(`${apiUrl}/api/attendance/event/${eventId}/import`, { students }, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return response.data;
+  } catch (err: any) {
+    const errorMessage = err.response?.data?.message || err.message || 'Failed to import student roster';
+    const statusCode = err.response?.status;
+    console.error(`API importEventAttendanceRoster failed [${statusCode}]:`, errorMessage);
+    return { success: false, message: errorMessage };
+  }
+}
+
+export async function qrCheckInApi(eventId: string, regNo: string, studentName?: string) {
+  try {
+    const response = await axios.post<{
+      success: boolean;
+      message: string;
+      data: StudentAttendanceRecord;
+    }>(`${apiUrl}/api/attendance/event/${eventId}/qr-checkin`, { regNo, studentName });
+    return response.data;
+  } catch (err) {
+    console.warn('API qrCheckIn failed, using local mode fallback:', err);
+    return null;
+  }
+}
+
+export async function scanHardCopyAttendanceApi(filesInput?: File | File[], sheetType: 'signed' | 'participant_list' = 'signed', eventId?: string) {
+  try {
+    const token = getToken();
+    const formData = new FormData();
+
+    if (Array.isArray(filesInput)) {
+      filesInput.forEach((f) => formData.append('files', f));
+      if (filesInput.length > 0) {
+        formData.append('file', filesInput[0]);
+      }
+    } else if (filesInput) {
+      formData.append('file', filesInput);
+      formData.append('files', filesInput);
+    }
+
+    formData.append('sheetType', sheetType);
+    if (eventId) {
+      formData.append('eventId', eventId);
+    }
+
+    const response = await axios.post<{
+      success: boolean;
+      message: string;
+      rawRowCandidates?: number;
+      reason?: string;
+      error?: string;
+      debug?: any;
+      data: {
+        sessionId: string;
+        totalRowsDetected: number;
+        extractedCount: number;
+        presentCount: number;
+        absentCount: number;
+        deptDistribution: Record<string, number>;
+        sheetType: string;
+        validationPassed: boolean;
+        students: Array<{
+          rowNumber?: number;
+          regNo: string;
+          studentName: string;
+          className: string;
+          department: string;
+          signaturePresent: boolean;
+          status: AttendanceStatus;
+          confidence: number;
+          isUncertain: boolean;
+          uncertainFields: string[];
+          isMatchedToRoster?: boolean;
+          sourceFiles?: string[];
+        }>;
+      };
+      summary?: {
+        totalFilesUploaded: number;
+        successfulFilesCount: number;
+        failedFilesCount: number;
+        totalRowsExtracted: number;
+        uniqueStudents: number;
+        duplicatesRemoved: number;
+        present: number;
+        absent: number;
+        fileResults?: Array<{
+          fileName: string;
+          status: 'success' | 'failed';
+          extractedCount: number;
+          error?: string | null;
+          providerUsed?: string;
+          modelUsed?: string;
+        }>;
+      };
+    }>(`${apiUrl}/api/attendance/scan-hardcopy`, formData, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  } catch (err: any) {
+    const errorMessage = err.response?.data?.message || err.message || 'Failed to scan physical attendance sheet';
+    const debugInfo = err.response?.data?.debug;
+    if (debugInfo) {
+      console.error('API scanHardCopyAttendance debug info:', debugInfo);
+    }
+    console.error('API scanHardCopyAttendance failed:', errorMessage);
+    return { success: false, message: errorMessage, data: null, summary: undefined };
+  }
 }

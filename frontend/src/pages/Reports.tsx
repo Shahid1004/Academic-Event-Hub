@@ -1,7 +1,11 @@
-import { useState } from 'react';
-import { sampleEvents, eventTypes, academicYears } from '../data/sampleData';
+import { useEffect, useState } from 'react';
+import { eventTypes, academicYears } from '../data/sampleData';
+import type { EventRecord } from '../types';
+import { getEvents } from '../services/api';
 
-export default function Reports() {
+interface ReportsProps { academicYear?: string; }
+
+export default function Reports({ academicYear = '' }: ReportsProps) {
   const [yearFilter, setYearFilter] = useState('2025-26');
   const [semFilter, setSemFilter] = useState('ALL');
   const [deptFilter, setDeptFilter] = useState('ALL');
@@ -11,8 +15,14 @@ export default function Reports() {
   const [coordinatorFilter, setCoordinatorFilter] = useState('');
   const [reportStatusFilter, setReportStatusFilter] = useState('ALL');
   const [generating, setGenerating] = useState<string | null>(null);
+  const [events, setEvents] = useState<EventRecord[]>([]);
 
-  const filtered = sampleEvents.filter(e => {
+  useEffect(() => {
+    getEvents({ academicYear: academicYear || undefined }).then(setEvents).catch(() => setEvents([]));
+    if (academicYear) setYearFilter(academicYear);
+  }, [academicYear]);
+
+  const filtered = events.filter(e => {
     const matchYear = yearFilter === 'ALL' || e.academicYear === yearFilter;
     const matchSem = semFilter === 'ALL' || e.semester === semFilter;
     const matchDept = deptFilter === 'ALL' || e.department === deptFilter;
@@ -59,8 +69,8 @@ export default function Reports() {
             <label className="text-xs text-slate-500 mb-1 block">Semester</label>
             <select value={semFilter} onChange={e => setSemFilter(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400">
               <option value="ALL">All Semesters</option>
-              <option value="I">Semester I</option>
-              <option value="II">Semester II</option>
+              <option value="I">Odd semester</option>
+              <option value="II">Even semester</option>
             </select>
           </div>
           <div>

@@ -9,13 +9,15 @@ interface AllEventsProps {
   navigate: (page: Page, eventId?: string) => void;
   filterDept?: Department;
   title?: string;
+  academicYear?: string;
 }
 
-export default function AllEvents({ navigate, filterDept, title = 'All Events' }: AllEventsProps) {
+export default function AllEvents({ navigate, filterDept, title = 'All Events', academicYear = '' }: AllEventsProps) {
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState<Department | 'ALL'>(filterDept || 'ALL');
   const [typeFilter, setTypeFilter] = useState<EventType | 'ALL'>('ALL');
-  const [yearFilter, setYearFilter] = useState('ALL');
+  const [yearFilter, setYearFilter] = useState(academicYear || 'ALL');
+  const [semesterFilter, setSemesterFilter] = useState<'ALL' | 'I' | 'II'>('ALL');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [sortBy, setSortBy] = useState<'date' | 'name' | 'participants'>('date');
@@ -40,6 +42,10 @@ export default function AllEvents({ navigate, filterDept, title = 'All Events' }
     return () => { active = false; window.clearInterval(interval); };
   }, []);
 
+  useEffect(() => {
+    setYearFilter(academicYear || 'ALL');
+  }, [academicYear]);
+
   const filtered = events
     .filter(e => {
       const matchSearch = !search || e.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -49,9 +55,10 @@ export default function AllEvents({ navigate, filterDept, title = 'All Events' }
       const matchDept = deptFilter === 'ALL' || e.department === deptFilter;
       const matchType = typeFilter === 'ALL' || e.type === typeFilter;
       const matchYear = yearFilter === 'ALL' || e.academicYear === yearFilter;
+      const matchSemester = semesterFilter === 'ALL' || e.semester === semesterFilter;
       const matchFrom = !fromDate || e.date >= fromDate;
       const matchTo = !toDate || e.date <= toDate;
-      return matchSearch && matchDept && matchType && matchYear && matchFrom && matchTo;
+      return matchSearch && matchDept && matchType && matchYear && matchSemester && matchFrom && matchTo;
     })
     .sort((a, b) => {
       if (sortBy === 'date') return b.date.localeCompare(a.date);
@@ -172,6 +179,11 @@ export default function AllEvents({ navigate, filterDept, title = 'All Events' }
             <option value="ALL">All Years</option>
             {academicYears.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
+          <select value={semesterFilter} onChange={e => setSemesterFilter(e.target.value as 'ALL' | 'I' | 'II')} className="px-3 py-2 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+            <option value="ALL">All Semesters</option>
+            <option value="I">Odd semester</option>
+            <option value="II">Even semester</option>
+          </select>
         </div>
         <div className="flex flex-wrap gap-3 items-center">
           <div className="flex items-center gap-2">
@@ -188,7 +200,7 @@ export default function AllEvents({ navigate, filterDept, title = 'All Events' }
             <option value="participants">Sort: Participants</option>
           </select>
           <button
-            onClick={() => { setSearch(''); setDeptFilter('ALL'); setTypeFilter('ALL'); setYearFilter('ALL'); setFromDate(''); setToDate(''); }}
+            onClick={() => { setSearch(''); setDeptFilter('ALL'); setTypeFilter('ALL'); setYearFilter('ALL'); setSemesterFilter('ALL'); setFromDate(''); setToDate(''); }}
             className="text-xs text-slate-500 hover:text-slate-800 border border-slate-200 px-3 py-1.5 rounded-xl bg-slate-50"
           >
             Clear Filters
@@ -223,7 +235,14 @@ export default function AllEvents({ navigate, filterDept, title = 'All Events' }
                   </td>
                 </tr>
               ) : filtered.map((event, i) => (
-                <tr key={event.id} className={`border-b border-slate-50 hover:bg-indigo-50/30 cursor-pointer ${i % 2 === 0 ? '' : 'bg-slate-50/20'}`}>
+                <tr
+                  key={event.id}
+                  onClick={() => navigate('event-details', event.id)}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') navigate('event-details', event.id); }}
+                  tabIndex={0}
+                  role="button"
+                  className={`border-b border-slate-50 hover:bg-indigo-50/30 cursor-pointer ${i % 2 === 0 ? '' : 'bg-slate-50/20'}`}
+                >
                   <td className="px-4 py-3">
                     <button onClick={() => navigate('event-details', event.id)} className="text-left">
                       <div className="font-medium text-slate-800 hover:text-indigo-700">{event.name}</div>

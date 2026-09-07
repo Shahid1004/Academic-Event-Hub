@@ -16,6 +16,7 @@ const settingsRoutes = require("./routes/settingsRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
 const attendanceRoutes = require("./routes/attendanceRoutes");
 const eventDocumentRoutes = require("./routes/eventDocumentRoutes");
+const attendanceRoutes = require("./routes/attendanceRoutes");
 
 const app = express();
 
@@ -42,6 +43,7 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/event-documents", eventDocumentRoutes);
+app.use("/api/attendance", attendanceRoutes);
 
 app.get("/", (req, res) => {
   res.json({ message: "Academic Event Hub API is running" });
@@ -50,24 +52,22 @@ app.get("/", (req, res) => {
 let mongoUri;
 try {
   mongoUri = getMongoUri();
+  mongoose.connect(mongoUri, {
+    serverSelectionTimeoutMS: 10000,
+    connectTimeoutMS: 10000,
+    socketTimeoutMS: 45000
+  })
+    .then(() => {
+      console.log("MongoDB connected");
+    })
+    .catch((err) => {
+      console.error("MongoDB connection failed:", err.message);
+      console.log("Warning: Continuing to run server without a working database.");
+    });
 } catch (error) {
   console.error(`MongoDB configuration failed: ${error.message}`);
-  process.exit(1);
 }
 
-mongoose.connect(mongoUri, {
-  serverSelectionTimeoutMS: 10000,
-  connectTimeoutMS: 10000,
-  socketTimeoutMS: 45000
-})
-  .then(() => {
-    console.log("MongoDB connected");
-
-    app.listen(process.env.PORT || 5000, () => {
-      console.log("Server running on port 5000");
-    });
-  })
-  .catch((err) => {
-    console.error("MongoDB connection failed:", err.message);
-    process.exit(1);
-  });
+app.listen(process.env.PORT || 5000, () => {
+  console.log("Server running on port " + (process.env.PORT || 5000));
+});

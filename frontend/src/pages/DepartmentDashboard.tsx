@@ -1,21 +1,29 @@
-import type { Department, Page } from '../types';
-import { sampleEvents } from '../data/sampleData';
+import { useEffect, useState } from 'react';
+import type { Department, EventRecord, Page } from '../types';
 import { eventTypeColors } from './Dashboard';
+import { getEvents } from '../services/api';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 interface DeptDashboardProps {
   dept: Department;
   navigate: (page: Page, eventId?: string) => void;
+  academicYear?: string;
 }
 
 const COLORS = ['#4F46E5', '#7C3AED', '#0EA5E9', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#14B8A6'];
 
 const months = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
 
-export default function DepartmentDashboard({ dept, navigate }: DeptDashboardProps) {
+export default function DepartmentDashboard({ dept, navigate, academicYear = '' }: DeptDashboardProps) {
+  const [eventsData, setEventsData] = useState<EventRecord[]>([]);
+
+  useEffect(() => {
+    getEvents({ academicYear: academicYear || undefined }).then(setEventsData).catch(() => setEventsData([]));
+  }, [academicYear]);
+
   const events = dept === 'BOTH'
-    ? sampleEvents.filter(e => e.department === 'BOTH')
-    : sampleEvents.filter(e => e.department === dept || e.department === 'BOTH');
+    ? eventsData.filter(e => e.department === 'BOTH')
+    : eventsData.filter(e => e.department === dept || e.department === 'BOTH');
 
   const completed = events.filter(e => e.status === 'Completed');
   const upcoming = events.filter(e => e.status === 'Upcoming');
@@ -31,9 +39,9 @@ export default function DepartmentDashboard({ dept, navigate }: DeptDashboardPro
 
   const monthlyData = months.map(m => ({
     month: m,
-    IT: sampleEvents.filter(e => e.department === 'IT' && new Date(e.date).toLocaleString('en', { month: 'short' }) === m).length,
-    AIDS: sampleEvents.filter(e => e.department === 'AIDS' && new Date(e.date).toLocaleString('en', { month: 'short' }) === m).length,
-    BOTH: sampleEvents.filter(e => e.department === 'BOTH' && new Date(e.date).toLocaleString('en', { month: 'short' }) === m).length,
+    IT: eventsData.filter(e => e.department === 'IT' && new Date(e.date).toLocaleString('en', { month: 'short' }) === m).length,
+    AIDS: eventsData.filter(e => e.department === 'AIDS' && new Date(e.date).toLocaleString('en', { month: 'short' }) === m).length,
+    BOTH: eventsData.filter(e => e.department === 'BOTH' && new Date(e.date).toLocaleString('en', { month: 'short' }) === m).length,
   }));
 
   const deptLabel = dept === 'IT' ? 'Information Technology' : dept === 'AIDS' ? 'AI & Data Science' : 'Combined IT + AIDS';
@@ -56,7 +64,7 @@ export default function DepartmentDashboard({ dept, navigate }: DeptDashboardPro
         <div className={`w-10 h-10 ${deptBg} rounded-xl flex items-center justify-center text-white font-bold text-sm`}>{dept}</div>
         <div>
           <h1 className="text-2xl font-bold font-heading text-slate-900">Department of {deptLabel}</h1>
-          <p className="text-slate-500 text-sm">Academic Year 2025-26 Dashboard</p>
+          <p className="text-slate-500 text-sm">Academic Year {academicYear || 'All years'} Dashboard</p>
         </div>
       </div>
 
@@ -125,7 +133,7 @@ export default function DepartmentDashboard({ dept, navigate }: DeptDashboardPro
           return (
             <div key={sem} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold font-heading text-slate-800">Semester {sem}</h3>
+                <h3 className="font-bold font-heading text-slate-800">{sem === 'I' ? 'Odd semester' : 'Even semester'}</h3>
                 <span className="text-sm font-bold text-indigo-600">{semEvents.length} events</span>
               </div>
               <div className="space-y-2">
