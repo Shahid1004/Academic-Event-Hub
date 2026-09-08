@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'hod' | 'coordinator' | 'faculty';
+export type UserRole = 'admin' | 'hod' | 'coordinator' | 'faculty' | 'student';
 
 export type Page =
   | 'login'
@@ -16,7 +16,9 @@ export type Page =
   | 'event-details'
   | 'create-event'
   | 'semester-excel'
-  | 'user-management';
+  | 'user-management'
+  | 'student-dashboard'
+  | 'student-event';
 
 export interface DashboardSummary {
   totalEvents: number;
