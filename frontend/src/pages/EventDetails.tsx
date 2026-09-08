@@ -18,6 +18,10 @@ import {
   type EventDocumentRecord,
   type EventFeedbackRecord
 } from '../services/api';
+import { eventTypeColors } from './Dashboard';
+import { getEventAttendanceApi, getEvents, importEventAttendanceRosterApi, qrCheckInApi, saveEventAttendanceApi, scanHardCopyAttendanceApi } from '../services/api';
+import { sampleEvents } from '../data/sampleData';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { generateFinalEventReport } from '../utils/finalEventReportGenerator';
 
 interface EventDetailsProps {
@@ -868,6 +872,15 @@ Attendance: ${event.attendance}%</p>
       console.error('PDF download error:', error);
       throw new Error('Failed to generate PDF download');
     }
+    const bytes = await pdf.save();
+    const objectUrl = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
   };
 
   const handleDownloadReport = async () => {

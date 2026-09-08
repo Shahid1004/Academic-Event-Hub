@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { AppSettings, Page, UserProfile, UserRole } from './types';
+import { getSettings, updateSettings } from './services/api';
 import { getSettings } from './services/api';
 import { sampleEvents } from './data/sampleData';
 
@@ -20,6 +21,7 @@ import Settings from '@/pages/Settings';
 import CreateEvent from './pages/CreateEvent';
 import SemesterExcel from './pages/SemesterExcel';
 import UserManagement from './pages/UserManagement';
+import StudentDashboard from './pages/StudentDashboard';
 import Documentation from './pages/Documentation';
 
 interface StoredUser {
@@ -27,6 +29,7 @@ interface StoredUser {
   name?: string;
   email?: string;
   role: UserRole;
+  registerNumber?: string;
   department?: string;
   active?: boolean;
   employeeId?: string;
@@ -41,7 +44,7 @@ const getStoredUser = (): StoredUser | null => {
 
   try {
     const user = JSON.parse(stored) as StoredUser;
-    return ['admin', 'hod', 'coordinator', 'faculty'].includes(user.role) ? user : null;
+    return ['admin', 'hod', 'coordinator', 'faculty', 'student'].includes(user.role) ? user : null;
   } catch {
     return null;
   }
@@ -49,6 +52,7 @@ const getStoredUser = (): StoredUser | null => {
 
 const getRoleLandingPage = (user: StoredUser | null): Page => {
   if (!user || user.role === 'admin') return 'dashboard';
+  if (user.role === 'student') return 'student-dashboard';
   if (user.role === 'hod') {
     return user.department?.toUpperCase().includes('AI') ? 'aids-dashboard' : 'it-dashboard';
   }
@@ -93,6 +97,8 @@ export default function App() {
   const [profile, setProfile] = useState<UserProfile>(() => toProfile(storedUser));
   const [settings, setSettings] = useState<AppSettings | null>(null);
 
+  const isStudent = userRole === 'student';
+
   useEffect(() => {
     if (page === 'login') return;
     const token = localStorage.getItem('token') || sessionStorage.getItem('token');
@@ -135,6 +141,11 @@ export default function App() {
         }}
       />
     );
+  }
+
+  if (isStudent) {
+    if (page === 'student-event') return <EventDetails eventId={selectedEventId} navigate={navigate} />;
+    return <StudentDashboard navigate={navigate} />;
   }
 
   const renderPage = () => {
@@ -199,6 +210,7 @@ export default function App() {
         );
 
       case 'documentation':
+        return <EventDetails eventId={selectedEventId} navigate={navigate} />;
         return <Documentation eventId={selectedEventId} navigate={navigate} />;
 
       case 'reports':
@@ -248,6 +260,12 @@ export default function App() {
           />
         );
 
+      case 'student-dashboard':
+        return <StudentDashboard navigate={navigate} />;
+
+      case 'student-event':
+        return <EventDetails eventId={selectedEventId} navigate={navigate} />;
+
       default:
         return (
           <Dashboard
@@ -268,6 +286,15 @@ export default function App() {
       academicYear={academicYear}
       academicYears={academicYears}
       onAcademicYearChange={setAcademicYear}
+      themeMode={settings?.theme.mode || 'light'}
+      onThemeToggle={() => {
+        if (!settings) return;
+        const nextMode: AppSettings['theme']['mode'] = settings.theme.mode === 'dark' ? 'light' : 'dark';
+        const nextSettings = { ...settings, theme: { ...settings.theme, mode: nextMode } };
+        setSettings(nextSettings);
+        applyTheme(nextSettings);
+        updateSettings({ theme: nextSettings.theme }).catch(() => undefined);
+      }}
     >
       {renderPage()}
     </Layout>
