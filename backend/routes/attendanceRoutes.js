@@ -1,5 +1,6 @@
 const express = require("express");
 const { authenticate } = require("../middleware/authMiddleware");
+const { getEventAttendance } = require("../controllers/attendanceController");
 const multer = require("multer");
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 

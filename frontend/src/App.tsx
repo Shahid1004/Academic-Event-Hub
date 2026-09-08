@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { AppSettings, Page, UserProfile, UserRole } from './types';
 import { getSettings, updateSettings } from './services/api';
+import { getSettings } from './services/api';
+import { sampleEvents } from './data/sampleData';
 
 import Login from './pages/Login';
 import Layout from './components/Layout';
@@ -14,11 +16,13 @@ import EventDetails from './pages/EventDetails';
 import CalendarPage from './pages/CalendarPage';
 import Analytics from './pages/Analytics';
 import Reports from './pages/Reports';
+import FormalAcademicReport from './pages/FormalAcademicReport';
 import Settings from '@/pages/Settings';
 import CreateEvent from './pages/CreateEvent';
 import SemesterExcel from './pages/SemesterExcel';
 import UserManagement from './pages/UserManagement';
 import StudentDashboard from './pages/StudentDashboard';
+import Documentation from './pages/Documentation';
 
 interface StoredUser {
   id?: string;
@@ -207,6 +211,20 @@ export default function App() {
 
       case 'documentation':
         return <EventDetails eventId={selectedEventId} navigate={navigate} />;
+        return <Documentation eventId={selectedEventId} navigate={navigate} />;
+
+      case 'reports':
+        return (
+          <FormalAcademicReport
+            events={sampleEvents as any}
+            navigate={navigate}
+          />
+        );
+
+            academicYear={academicYear}
+            title="Documentation"
+          />
+        );
 
       case 'reports':
         return <Reports academicYear={academicYear} />;

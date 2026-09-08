@@ -89,7 +89,7 @@ export default function DepartmentDashboard({ dept, navigate, academicYear = '' 
               <Pie data={typeData} dataKey="count" nameKey="type" cx="50%" cy="50%" outerRadius={70} innerRadius={40}>
                 {typeData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
               </Pie>
-              <Tooltip formatter={(v, n) => [v, n]} />
+              <Tooltip />
             </PieChart>
             <div className="flex-1 space-y-1.5 max-h-40 overflow-y-auto">
               {typeData.map((d, i) => (

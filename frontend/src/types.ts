@@ -1,5 +1,7 @@
 export type UserRole = 'admin' | 'hod' | 'coordinator' | 'faculty' | 'student';
 
+export type Department = 'IT' | 'AIDS' | 'BOTH';
+
 export type Page =
   | 'login'
   | 'dashboard'
