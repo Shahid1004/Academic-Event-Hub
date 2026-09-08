@@ -16,7 +16,6 @@ const settingsRoutes = require("./routes/settingsRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
 const attendanceRoutes = require("./routes/attendanceRoutes");
 const eventDocumentRoutes = require("./routes/eventDocumentRoutes");
-const attendanceRoutes = require("./routes/attendanceRoutes");
 
 const app = express();
 
@@ -43,7 +42,6 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/event-documents", eventDocumentRoutes);
-app.use("/api/attendance", attendanceRoutes);
 
 app.get("/", (req, res) => {
   res.json({ message: "Academic Event Hub API is running" });

@@ -13,6 +13,7 @@ export type Page =
   | 'assigned-events'
   | 'documentation'
   | 'reports'
+  | 'formal-reports'
   | 'analytics'
   | 'settings'
   | 'event-details'

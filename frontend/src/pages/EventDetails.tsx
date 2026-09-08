@@ -1,16 +1,24 @@
 import { useEffect, useState } from 'react';
-import type { EventRecord, Page } from '../types';
 import * as XLSX from 'xlsx';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import type { AttendanceStatus, EventRecord, Page, StudentAttendanceRecord } from '../types';
-import { eventTypeColors } from './Dashboard';
-import { getEventAttendanceApi, getEvents, importEventAttendanceRosterApi, qrCheckInApi, saveEventAttendanceApi, scanHardCopyAttendanceApi } from '../services/api';
-import type { Page, EventRecord, StudentAttendanceRecord, AttendanceStatus } from '../types';
-import { getEvents, getEventAttendanceApi, saveEventAttendanceApi, qrCheckInApi } from '../services/api';
 import { sampleEvents } from '../data/sampleData';
 import { eventTypeColors } from './Dashboard';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import {
+  getEvents,
+  getEventAttendance,
+  getEventAttendanceApi,
+  getEventDocumentBytes,
+  getEventDocuments,
+  getEventFeedback,
+  importEventAttendanceRosterApi,
+  saveEventAttendanceApi,
+  scanHardCopyAttendanceApi,
+  type EventAttendanceSummary,
+  type EventDocumentRecord,
+  type EventFeedbackRecord
+} from '../services/api';
 import { generateFinalEventReport } from '../utils/finalEventReportGenerator';
-import { getEventAttendance, getEventDocumentBytes, getEventDocuments, getEventFeedback, type EventAttendanceSummary, type EventDocumentRecord, type EventFeedbackRecord } from '../services/api';
 
 interface EventDetailsProps {
   eventId: string;
@@ -237,12 +245,8 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
   const [saveToast, setSaveToast] = useState<string | null>(null);
 
   // Attendance mode
-  const [attendanceMode, setAttendanceMode] = useState<'online' | 'qr' | 'hardcopy' | 'od_generator' | 'excel'>('online');
-  
-  // QR scanner simulator state
-  const [qrRegInput, setQrRegInput] = useState('');
-  const [qrLogs, setQrLogs] = useState<{ regNo: string; name: string; time: string; status: string }[]>([]);
-  const [qrMessage, setQrMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [attendanceMode, setAttendanceMode] = useState<'online' | 'hardcopy' | 'od_generator' | 'excel'>('online');
+
   // Add Student Manual Modal state
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
   const [addStudentForm, setAddStudentForm] = useState({
@@ -302,7 +306,6 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
   const [uploadDocName, setUploadDocName] = useState('');
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, File[]>>({});
-  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiGenerated, setAiGenerated] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<AiAnalysis | null>(null);
@@ -322,7 +325,6 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
 
-  const event = sampleEvents.find(e => e.id === eventId) || sampleEvents[0];
   useEffect(() => {
     let active = true;
     setFeedbackLoading(true);
@@ -341,41 +343,7 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
       .catch(error => { console.error('Attendance lookup failed:', error); if (active) setAttendanceSummary(null); });
     return () => { active = false; };
   }, [eventId]);
-  const reportEvent = event as EventRecord & Record<string, unknown>;
-  const reportTopics = Array.isArray(reportEvent.topics) ? reportEvent.topics.map(String).join('\n') : reportValue(reportEvent.topics || reportEvent.topicsCovered || reportEvent.conceptsCovered);
-  const reportOutcomes = Array.isArray(reportEvent.keyOutcomes) ? reportEvent.keyOutcomes.map(String).join('\n') : reportValue(reportEvent.keyOutcomes || reportEvent.outcomes);
-  const reportRecommendations = Array.isArray(reportEvent.recommendations) ? reportEvent.recommendations.map(String).join('\n') : reportValue(reportEvent.recommendations || reportEvent.correctiveActions);
-  const feedbackOverallValues = feedbackRecords.map(record => feedbackNumber(record, 'overallRating', 'overall', 'rating', 'overallScore')).filter((value): value is number => value !== undefined);
-  const feedbackHighRating = feedbackOverallValues.length ? `${((feedbackOverallValues.filter(value => value >= 4).length / feedbackOverallValues.length) * 100).toFixed(1)}%` : 'Not Available';
-  const feedbackDistribution = [5, 4, 3, 2, 1].map(rating => ({ rating, count: feedbackOverallValues.filter(value => Math.round(value) === rating).length }));
-  const feedbackQuestions = [
-    { q: 'Overall satisfaction', keys: ['overallSatisfaction', 'satisfactionRating', 'satisfaction'] },
-    { q: 'Content quality', keys: ['sessionContentRating', 'contentRating', 'content', 'sessionContent'] },
-    { q: 'Presentation quality', keys: ['speakerEffectivenessRating', 'speakerRating', 'speakerEffectiveness', 'speaker'] },
-    { q: 'Expectations met', keys: ['expectationsMet', 'expectationRating', 'expectations'] },
-    { q: 'Would recommend', keys: ['wouldRecommend', 'recommendationRating', 'recommend'] },
-  ].map(question => ({ ...question, average: feedbackAverage(feedbackRecords, ...question.keys) }));
-  const feedbackAnalysisText = feedbackRecords.length
-    ? `Feedback analysis was generated from ${feedbackRecords.length} response(s). ${feedbackOverallValues.length ? `The average overall rating was ${feedbackAverage(feedbackRecords, 'overallRating', 'overall', 'rating', 'overallScore')}, with ${feedbackOverallValues.filter(value => value >= 4).length} response(s) rated 4 or above.` : 'An overall rating was not recorded.'}`
-    : 'No feedback responses were recorded for this event.';
-  const feedbackComments = feedbackRecords
-    .map(record => record.comment || record.comments || record.response)
-    .filter((comment): comment is string => typeof comment === 'string' && comment.trim().length > 0);
-  const reportSections = [
-    { num: 1, title: 'Event Overview', content: `Event Name: ${reportValue(event.name)}\nEvent Type: ${reportValue(event.type)}\nDepartment: ${reportValue(event.department)}\nDate: ${reportValue(event.date)}\nTime: ${event.startTime && event.endTime ? `${event.startTime} - ${event.endTime}` : 'Not Available'}\nVenue: ${reportValue(event.venue)}\nMode: ${reportValue(event.mode)}\nCoordinator: ${reportValue(event.coordinator)}\nTarget Participants: ${reportValue(event.targetStudents)}` },
-    { num: 2, title: 'Objective', content: reportValue(event.objective) },
-    { num: 3, title: 'Permission / Proposal Details', content: `Approval status: ${storedReportValue(event, 'approvalStatus', 'permissionStatus')}\nProposal submission date: ${storedReportValue(event, 'proposalSubmissionDate', 'proposalDate', 'submissionDate')}\nApproval date: ${storedReportValue(event, 'approvalDate', 'permissionApprovalDate')}\nHOD/Principal approval details: ${storedReportValue(event, 'approvalDetails', 'hodApprovalDetails', 'principalApprovalDetails')}` },
-    { num: 4, title: 'Resource Person / Guest Details', content: `Name: ${reportValue(event.resourcePerson?.name)}\nDesignation: ${reportValue(event.resourcePerson?.designation)}\nOrganization: ${reportValue(event.resourcePerson?.organization)}\nContact: ${reportValue(event.resourcePerson?.contact)}\nEmail: ${reportValue(event.resourcePerson?.email)}\nSession Topic: ${storedReportValue(event, 'sessionTopic', 'topic', 'topics')}` },
-    { num: 5, title: 'Event Execution Details', content: storedReportValue(event, 'executionDetails', 'executionSummary') !== 'Not Available' ? String(storedReportValue(event, 'executionDetails', 'executionSummary')) : `The event was conducted in ${reportValue(event.mode)} mode at ${reportValue(event.venue)}. Coordinator: ${reportValue(event.coordinator)}. Description: ${reportValue(event.description)}` },
-    { num: 6, title: 'Topics / Concepts Covered', content: reportTopics },
-    { num: 7, title: 'Student Participation', content: `Target students: ${reportValue(event.targetStudents)}\nExpected participants: ${reportValue(event.expectedParticipants)}\nActual participants: ${reportValue(event.actualParticipants)}` },
-    { num: 8, title: 'Attendance Summary', content: `Total students: ${storedReportValue(event, 'totalStudents') !== 'Not Available' ? storedReportValue(event, 'totalStudents') : reportValue(event.actualParticipants)}\nPresent: ${storedReportValue(event, 'present', 'studentsPresent', 'presentStudents')}\nAbsent: ${storedReportValue(event, 'absent', 'studentsAbsent', 'absentStudents')}\nAttendance percentage: ${event.attendance ? `${event.attendance}%` : 'Not Available'}` },
-    { num: 9, title: 'Feedback Summary and Analysis', content: feedbackLoading ? 'Loading feedback records...' : feedbackError || `Total feedback received: ${feedbackRecords.length || 'No feedback responses were recorded for this event.'}\nAverage overall rating: ${feedbackAverage(feedbackRecords, 'overallRating', 'overall', 'rating', 'overallScore')}\nSession content rating: ${feedbackAverage(feedbackRecords, 'sessionContentRating', 'contentRating', 'content', 'sessionContent')}\nSpeaker effectiveness rating: ${feedbackAverage(feedbackRecords, 'speakerEffectivenessRating', 'speakerRating', 'speakerEffectiveness', 'speaker')}\nUsefulness to students: ${feedbackAverage(feedbackRecords, 'usefulnessToStudents', 'usefulnessRating', 'usefulness', 'relevanceRating')}\nOverall satisfaction/response: ${feedbackAverage(feedbackRecords, 'overallSatisfaction', 'satisfactionRating', 'satisfaction')}\nPercentage rating 4 or above: ${feedbackHighRating}\nAnalysis: ${feedbackAnalysisText}` },
-    { num: 10, title: 'Payment / Remuneration Details', content: `Resource person remuneration: ${storedReportValue(event, 'remuneration', 'resourcePersonRemuneration', 'paymentAmount')}\nPayment method: ${storedReportValue(event, 'paymentMethod')}\nPayment date: ${storedReportValue(event, 'paymentDate')}\nTransaction reference: ${storedReportValue(event, 'transactionReference', 'transactionId')}` },
-    { num: 11, title: 'Key Outcomes', content: reportOutcomes },
-    { num: 12, title: 'Corrective Action / Recommendations', content: reportRecommendations },
-    { num: 13, title: 'Conclusion', content: `The ${reportValue(event.type)} titled "${reportValue(event.name)}" was conducted on ${reportValue(event.date)} with ${reportValue(event.actualParticipants)} participant(s) recorded. The event addressed its recorded objective, with attendance recorded as ${event.attendance ? `${event.attendance}%` : 'Not Available'} and feedback recorded as ${event.feedbackScore ? `${event.feedbackScore}/5` : 'Not Available'}.` },
-  ];
+
   const [event, setEvent] = useState<EventRecord | null>(null);
   const [eventLoading, setEventLoading] = useState(true);
   const [eventError, setEventError] = useState(false);
@@ -414,6 +382,42 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
       </div>
     </div>
   );
+
+  const reportEvent = event as EventRecord & Record<string, unknown>;
+  const reportTopics = Array.isArray(reportEvent.topics) ? reportEvent.topics.map(String).join('\n') : reportValue(reportEvent.topics || reportEvent.topicsCovered || reportEvent.conceptsCovered);
+  const reportOutcomes = Array.isArray(reportEvent.keyOutcomes) ? reportEvent.keyOutcomes.map(String).join('\n') : reportValue(reportEvent.keyOutcomes || reportEvent.outcomes);
+  const reportRecommendations = Array.isArray(reportEvent.recommendations) ? reportEvent.recommendations.map(String).join('\n') : reportValue(reportEvent.recommendations || reportEvent.correctiveActions);
+  const feedbackOverallValues = feedbackRecords.map(record => feedbackNumber(record, 'overallRating', 'overall', 'rating', 'overallScore')).filter((value): value is number => value !== undefined);
+  const feedbackHighRating = feedbackOverallValues.length ? `${((feedbackOverallValues.filter(value => value >= 4).length / feedbackOverallValues.length) * 100).toFixed(1)}%` : 'Not Available';
+  const feedbackDistribution = [5, 4, 3, 2, 1].map(rating => ({ rating, count: feedbackOverallValues.filter(value => Math.round(value) === rating).length }));
+  const feedbackQuestions = [
+    { q: 'Overall satisfaction', keys: ['overallSatisfaction', 'satisfactionRating', 'satisfaction'] },
+    { q: 'Content quality', keys: ['sessionContentRating', 'contentRating', 'content', 'sessionContent'] },
+    { q: 'Presentation quality', keys: ['speakerEffectivenessRating', 'speakerRating', 'speakerEffectiveness', 'speaker'] },
+    { q: 'Expectations met', keys: ['expectationsMet', 'expectationRating', 'expectations'] },
+    { q: 'Would recommend', keys: ['wouldRecommend', 'recommendationRating', 'recommend'] },
+  ].map(question => ({ ...question, average: feedbackAverage(feedbackRecords, ...question.keys) }));
+  const feedbackAnalysisText = feedbackRecords.length
+    ? `Feedback analysis was generated from ${feedbackRecords.length} response(s). ${feedbackOverallValues.length ? `The average overall rating was ${feedbackAverage(feedbackRecords, 'overallRating', 'overall', 'rating', 'overallScore')}, with ${feedbackOverallValues.filter(value => value >= 4).length} response(s) rated 4 or above.` : 'An overall rating was not recorded.'}`
+    : 'No feedback responses were recorded for this event.';
+  const feedbackComments = feedbackRecords
+    .map(record => record.comment || record.comments || record.response)
+    .filter((comment): comment is string => typeof comment === 'string' && comment.trim().length > 0);
+  const reportSections = [
+    { num: 1, title: 'Event Overview', content: `Event Name: ${reportValue(event.name)}\nEvent Type: ${reportValue(event.type)}\nDepartment: ${reportValue(event.department)}\nDate: ${reportValue(event.date)}\nTime: ${event.startTime && event.endTime ? `${event.startTime} - ${event.endTime}` : 'Not Available'}\nVenue: ${reportValue(event.venue)}\nMode: ${reportValue(event.mode)}\nCoordinator: ${reportValue(event.coordinator)}\nTarget Participants: ${reportValue(event.targetStudents)}` },
+    { num: 2, title: 'Objective', content: reportValue(event.objective) },
+    { num: 3, title: 'Permission / Proposal Details', content: `Approval status: ${storedReportValue(event, 'approvalStatus', 'permissionStatus')}\nProposal submission date: ${storedReportValue(event, 'proposalSubmissionDate', 'proposalDate', 'submissionDate')}\nApproval date: ${storedReportValue(event, 'approvalDate', 'permissionApprovalDate')}\nHOD/Principal approval details: ${storedReportValue(event, 'approvalDetails', 'hodApprovalDetails', 'principalApprovalDetails')}` },
+    { num: 4, title: 'Resource Person / Guest Details', content: `Name: ${reportValue(event.resourcePerson?.name)}\nDesignation: ${reportValue(event.resourcePerson?.designation)}\nOrganization: ${reportValue(event.resourcePerson?.organization)}\nContact: ${reportValue(event.resourcePerson?.contact)}\nEmail: ${reportValue(event.resourcePerson?.email)}\nSession Topic: ${storedReportValue(event, 'sessionTopic', 'topic', 'topics')}` },
+    { num: 5, title: 'Event Execution Details', content: storedReportValue(event, 'executionDetails', 'executionSummary') !== 'Not Available' ? String(storedReportValue(event, 'executionDetails', 'executionSummary')) : `The event was conducted in ${reportValue(event.mode)} mode at ${reportValue(event.venue)}. Coordinator: ${reportValue(event.coordinator)}. Description: ${reportValue(event.description)}` },
+    { num: 6, title: 'Topics / Concepts Covered', content: reportTopics },
+    { num: 7, title: 'Student Participation', content: `Target students: ${reportValue(event.targetStudents)}\nExpected participants: ${reportValue(event.expectedParticipants)}\nActual participants: ${reportValue(event.actualParticipants)}` },
+    { num: 8, title: 'Attendance Summary', content: `Total students: ${storedReportValue(event, 'totalStudents') !== 'Not Available' ? storedReportValue(event, 'totalStudents') : reportValue(event.actualParticipants)}\nPresent: ${storedReportValue(event, 'present', 'studentsPresent', 'presentStudents')}\nAbsent: ${storedReportValue(event, 'absent', 'studentsAbsent', 'absentStudents')}\nAttendance percentage: ${event.attendance ? `${event.attendance}%` : 'Not Available'}` },
+    { num: 9, title: 'Feedback Summary and Analysis', content: feedbackLoading ? 'Loading feedback records...' : feedbackError || `Total feedback received: ${feedbackRecords.length || 'No feedback responses were recorded for this event.'}\nAverage overall rating: ${feedbackAverage(feedbackRecords, 'overallRating', 'overall', 'rating', 'overallScore')}\nSession content rating: ${feedbackAverage(feedbackRecords, 'sessionContentRating', 'contentRating', 'content', 'sessionContent')}\nSpeaker effectiveness rating: ${feedbackAverage(feedbackRecords, 'speakerEffectivenessRating', 'speakerRating', 'speakerEffectiveness', 'speaker')}\nUsefulness to students: ${feedbackAverage(feedbackRecords, 'usefulnessToStudents', 'usefulnessRating', 'usefulness', 'relevanceRating')}\nOverall satisfaction/response: ${feedbackAverage(feedbackRecords, 'overallSatisfaction', 'satisfactionRating', 'satisfaction')}\nPercentage rating 4 or above: ${feedbackHighRating}\nAnalysis: ${feedbackAnalysisText}` },
+    { num: 10, title: 'Payment / Remuneration Details', content: `Resource person remuneration: ${storedReportValue(event, 'remuneration', 'resourcePersonRemuneration', 'paymentAmount')}\nPayment method: ${storedReportValue(event, 'paymentMethod')}\nPayment date: ${storedReportValue(event, 'paymentDate')}\nTransaction reference: ${storedReportValue(event, 'transactionReference', 'transactionId')}` },
+    { num: 11, title: 'Key Outcomes', content: reportOutcomes },
+    { num: 12, title: 'Corrective Action / Recommendations', content: reportRecommendations },
+    { num: 13, title: 'Conclusion', content: `The ${reportValue(event.type)} titled "${reportValue(event.name)}" was conducted on ${reportValue(event.date)} with ${reportValue(event.actualParticipants)} participant(s) recorded. The event addressed its recorded objective, with attendance recorded as ${event.attendance ? `${event.attendance}%` : 'Not Available'} and feedback recorded as ${event.feedbackScore ? `${event.feedbackScore}/5` : 'Not Available'}.` },
+  ];
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'overview', label: 'Overview' },
@@ -642,38 +646,7 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
     setTimeout(() => setSaveToast(null), 3500);
   };
 
-  // Student QR check-in simulation
-  const handleQrCheckIn = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const cleanReg = qrRegInput.trim().toUpperCase();
-    if (!cleanReg) return;
 
-    const student = attendanceRecords.find(s => s.regNo.toUpperCase() === cleanReg);
-    
-    // Call backend API as well
-    await qrCheckInApi(eventId, cleanReg, student?.studentName);
-
-    if (student) {
-      setAttendanceRecords(prev => prev.map(s => s.regNo.toUpperCase() === cleanReg ? { ...s, status: 'P', checkInMethod: 'qr', markedAt: new Date().toLocaleTimeString() } : s));
-      setQrMessage({ text: `Success! ${student.studentName} (${cleanReg}) checked in.`, type: 'success' });
-      setQrLogs(prev => [{ regNo: cleanReg, name: student.studentName, time: new Date().toLocaleTimeString(), status: 'P' }, ...prev]);
-    } else {
-      // Add new student
-      const newRec: StudentAttendanceRecord = {
-        regNo: cleanReg,
-        studentName: `Student ${cleanReg}`,
-        className: 'III IT A',
-        status: 'P',
-        checkInMethod: 'qr',
-        markedAt: new Date().toLocaleTimeString()
-      };
-      setAttendanceRecords(prev => [...prev, newRec]);
-      setQrMessage({ text: `Checked in new student ${cleanReg}!`, type: 'success' });
-      setQrLogs(prev => [{ regNo: cleanReg, name: `Student ${cleanReg}`, time: new Date().toLocaleTimeString(), status: 'P' }, ...prev]);
-    }
-    setQrRegInput('');
-    setTimeout(() => setQrMessage(null), 3000);
-  };
 
   const handleGenAI = async () => {
     setAiLoading(true);
@@ -895,16 +868,6 @@ Attendance: ${event.attendance}%</p>
       console.error('PDF download error:', error);
       throw new Error('Failed to generate PDF download');
     }
-    const bytes = await pdf.save();
-    const objectUrl = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: 'application/pdf' }));
-    const objectUrl = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
-    const link = document.createElement('a');
-    link.href = objectUrl;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
   };
 
   const handleDownloadReport = async () => {
@@ -1218,7 +1181,6 @@ Attendance: ${event.attendance}%</p>
           <div className="flex gap-2 bg-white rounded-2xl p-2 shadow-sm border border-slate-100 overflow-x-auto">
             {[
               { id: 'online', label: '🖥️ Online Roster' },
-              { id: 'qr', label: '📱 QR Check-In & Scanner' },
               { id: 'hardcopy', label: '📋 Hard Copy Upload' },
               { id: 'excel', label: '📊 Excel Import/Export' },
               { id: 'od_generator', label: '📜 OD Pass Generator' },
@@ -1381,118 +1343,7 @@ Attendance: ${event.attendance}%</p>
             </div>
           )}
 
-          {/* Mode 2: QR Check-In & Scanner */}
-          {attendanceMode === 'qr' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              {/* Event Display QR Code */}
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 text-center space-y-4">
-                <div>
-                  <h3 className="font-bold font-heading text-slate-800 text-lg">Event QR Code Check-In</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Project this QR Code on screen for student instant self check-in</p>
-                </div>
 
-                <div className="p-4 bg-indigo-50/60 rounded-2xl inline-block border-2 border-indigo-200 shadow-inner">
-                  {/* Dynamic Visual QR Code */}
-                  <svg className="w-48 h-48 mx-auto" viewBox="0 0 100 100" fill="currentColor">
-                    <rect width="100" height="100" fill="white" rx="8" />
-                    {/* Position patterns */}
-                    <rect x="5" y="5" width="30" height="30" fill="#4F46E5" rx="4" />
-                    <rect x="10" y="10" width="20" height="20" fill="white" rx="2" />
-                    <rect x="14" y="14" width="12" height="12" fill="#4F46E5" rx="1" />
-
-                    <rect x="65" y="5" width="30" height="30" fill="#4F46E5" rx="4" />
-                    <rect x="70" y="10" width="20" height="20" fill="white" rx="2" />
-                    <rect x="74" y="14" width="12" height="12" fill="#4F46E5" rx="1" />
-
-                    <rect x="5" y="65" width="30" height="30" fill="#4F46E5" rx="4" />
-                    <rect x="10" y="70" width="20" height="20" fill="white" rx="2" />
-                    <rect x="14" y="74" width="12" height="12" fill="#4F46E5" rx="1" />
-
-                    {/* Data pattern grid */}
-                    <rect x="42" y="10" width="8" height="8" fill="#4F46E5" />
-                    <rect x="52" y="18" width="8" height="8" fill="#4F46E5" />
-                    <rect x="42" y="42" width="16" height="16" fill="#4F46E5" rx="2" />
-                    <rect x="65" y="42" width="8" height="8" fill="#4F46E5" />
-                    <rect x="10" y="42" width="8" height="8" fill="#4F46E5" />
-                    <rect x="22" y="50" width="8" height="8" fill="#4F46E5" />
-                    <rect x="42" y="68" width="8" height="8" fill="#4F46E5" />
-                    <rect x="52" y="80" width="8" height="8" fill="#4F46E5" />
-                    <rect x="70" y="68" width="16" height="8" fill="#4F46E5" />
-                    <rect x="80" y="80" width="8" height="12" fill="#4F46E5" />
-                  </svg>
-                </div>
-
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs flex items-center justify-between gap-2">
-                  <span className="font-mono text-slate-600 truncate">http://academic-hub.edu/checkin/{event.id}</span>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard?.writeText(`http://academic-hub.edu/checkin/${event.id}`);
-                      setSaveToast('Copied QR Check-In link to clipboard!');
-                      setTimeout(() => setSaveToast(null), 2500);
-                    }}
-                    className="px-3 py-1 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700"
-                  >
-                    Copy Link
-                  </button>
-                </div>
-
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-700 font-semibold flex items-center justify-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                  Live Counter: {present} Students Checked In ({attendanceRate}%)
-                </div>
-              </div>
-
-              {/* Student Check-In Simulator / Scanner Input */}
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 space-y-4">
-                <div>
-                  <h3 className="font-bold font-heading text-slate-800 text-lg">Student Scanner Simulator</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Scan or type Roll / Registration No to verify presence live</p>
-                </div>
-
-                {qrMessage && (
-                  <div className={`p-3 rounded-xl text-xs font-semibold ${qrMessage.type === 'success' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
-                    {qrMessage.text}
-                  </div>
-                )}
-
-                <form onSubmit={handleQrCheckIn} className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Enter Reg No (e.g. 22IT001, 22IT003)..."
-                    value={qrRegInput}
-                    onChange={(e) => setQrRegInput(e.target.value)}
-                    className="px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-slate-50 flex-1 font-mono uppercase"
-                  />
-                  <button
-                    type="submit"
-                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-sm"
-                  >
-                    Check In
-                  </button>
-                </form>
-
-                <div>
-                  <h4 className="font-semibold text-xs text-slate-500 uppercase tracking-wider mb-2">Live Check-In Activity Log</h4>
-                  <div className="max-h-56 overflow-y-auto space-y-2 border border-slate-100 rounded-xl p-2 bg-slate-50/50">
-                    {qrLogs.length === 0 ? (
-                      <div className="text-center py-6 text-xs text-slate-400">No student check-ins recorded yet in this session.</div>
-                    ) : (
-                      qrLogs.map((log, index) => (
-                        <div key={`${log.regNo}-${index}`} className="flex items-center justify-between p-2.5 bg-white rounded-lg shadow-2xs border border-slate-100 text-xs">
-                          <div className="flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                            <span className="font-mono font-bold text-slate-700">{log.regNo}</span>
-                            <span className="text-slate-600 font-medium">{log.name}</span>
-                          </div>
-                          <span className="text-slate-400 font-mono text-xs">{log.time}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Mode 3: Hard Copy Upload */}
           {attendanceMode === 'hardcopy' && (
@@ -2183,10 +2034,19 @@ Attendance: ${event.attendance}%</p>
               {/* Formal Document Box */}
               <div className="p-8 border-2 border-slate-300 rounded-2xl bg-white space-y-6 max-w-3xl mx-auto shadow-inner text-slate-800">
                 {/* Letterhead Header */}
-                <div className="text-center border-b-2 border-indigo-600 pb-4 space-y-1">
-                  <h2 className="text-lg font-bold font-heading uppercase text-indigo-900 tracking-wider">Academic Event Hub — Department of {event.department}</h2>
-                  <p className="text-xs text-slate-500">Official Student On-Duty (OD) Recommendation Form</p>
-                  <p className="text-xs text-slate-400 font-mono">Ref: OD/{event.academicYear}/{event.id}</p>
+                <div className="text-center border-b-2 border-indigo-600 pb-4 space-y-1.5">
+                  <h2 className="text-xl font-bold font-heading text-slate-900 tracking-wide uppercase">
+                    Sona College of Technology, Salem
+                  </h2>
+                  <h3 className="text-sm font-semibold text-indigo-700 tracking-wider">
+                    Department of Information Technology
+                  </h3>
+                  <p className="text-xs font-semibold text-slate-600 uppercase tracking-widest">
+                    Official Student On-Duty (OD) Recommendation Form
+                  </p>
+                  <p className="text-xs text-slate-400 font-mono">
+                    Ref: OD/{event.academicYear || '2025-26'}/{event.id}
+                  </p>
                 </div>
 
                 {/* Event Summary */}

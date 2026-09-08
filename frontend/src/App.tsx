@@ -202,20 +202,15 @@ export default function App() {
         return <Documentation eventId={selectedEventId} navigate={navigate} />;
 
       case 'reports':
+        return <Reports academicYear={academicYear} />;
+
+      case 'formal-reports':
         return (
           <FormalAcademicReport
             events={sampleEvents as any}
             navigate={navigate}
           />
         );
-
-            academicYear={academicYear}
-            title="Documentation"
-          />
-        );
-
-      case 'reports':
-        return <Reports academicYear={academicYear} />;
 
       case 'analytics':
         return <Analytics academicYear={academicYear} />;
