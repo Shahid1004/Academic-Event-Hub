@@ -11,6 +11,8 @@ interface LayoutProps {
   academicYears: string[];
   onAcademicYearChange: (year: string) => void;
   profile: UserProfile;
+  themeMode: 'light' | 'dark';
+  onThemeToggle: () => void;
 }
 
 const sidebarSections = [
@@ -81,13 +83,19 @@ function Icon({ name, className = 'w-5 h-5' }: { name: string; className?: strin
 
 export { Icon };
 
-export default function Layout({ currentPage, navigate, children, userRole = 'faculty', academicYear, academicYears, onAcademicYearChange, profile }: LayoutProps) {
+export default function Layout({ currentPage, navigate, children, userRole = 'faculty', academicYear, academicYears, onAcademicYearChange, profile, themeMode, onThemeToggle }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
 
   const avatarClass = profile.avatarColor === 'blue' ? 'bg-blue-600' : profile.avatarColor === 'teal' ? 'bg-teal-600' : profile.avatarColor === 'rose' ? 'bg-rose-600' : 'bg-indigo-600';
   const userInitials = profile.name.trim().split(/\s+/).map(word => word[0]).join('').slice(0, 2).toUpperCase() || 'U';
+  const logout = () => {
+    if (!window.confirm('Are you sure you want to log out?')) return;
+    localStorage.clear();
+    sessionStorage.clear();
+    navigate('login' as Page);
+  };
 
   return (
     <div className="flex h-screen bg-slate-100 overflow-hidden">
@@ -162,7 +170,7 @@ export default function Layout({ currentPage, navigate, children, userRole = 'fa
                 <div className="text-sm font-medium text-slate-800">{profile.name}</div>
                 <div className="text-xs text-slate-400">{profile.designation || profile.role} — {profile.department}</div>
               </div>
-              <button onClick={() => { localStorage.clear(); sessionStorage.clear(); navigate('login' as Page); }} className="text-slate-400 hover:text-slate-600">
+              <button onClick={logout} className="text-slate-400 hover:text-slate-600" aria-label="Log out">
                 <Icon name="logout" className="w-4 h-4" />
               </button>
             </div>
@@ -195,6 +203,14 @@ export default function Layout({ currentPage, navigate, children, userRole = 'fa
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={onThemeToggle}
+              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg"
+              aria-label={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
+              title={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
+            >
+              <span className="text-base" aria-hidden="true">{themeMode === 'dark' ? '☀️' : '🌙'}</span>
+            </button>
             {/* Notifications */}
             <div className="relative">
               <button
@@ -259,7 +275,7 @@ export default function Layout({ currentPage, navigate, children, userRole = 'fa
                   ))}
                   <div className="border-t border-slate-100">
                     <button
-                      onClick={() => { localStorage.clear(); sessionStorage.clear(); navigate('login' as Page); }}
+                      onClick={logout}
                       className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50"
                     >
                       Sign Out

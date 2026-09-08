@@ -4,10 +4,7 @@ import * as XLSX from 'xlsx';
 import type { AttendanceStatus, EventRecord, Page, StudentAttendanceRecord } from '../types';
 import { eventTypeColors } from './Dashboard';
 import { getEventAttendanceApi, getEvents, importEventAttendanceRosterApi, qrCheckInApi, saveEventAttendanceApi, scanHardCopyAttendanceApi } from '../services/api';
-import type { Page, EventRecord, StudentAttendanceRecord, AttendanceStatus } from '../types';
-import { getEvents, getEventAttendanceApi, saveEventAttendanceApi, qrCheckInApi } from '../services/api';
 import { sampleEvents } from '../data/sampleData';
-import { eventTypeColors } from './Dashboard';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { generateFinalEventReport } from '../utils/finalEventReportGenerator';
 import { getEventAttendance, getEventDocumentBytes, getEventDocuments, getEventFeedback, type EventAttendanceSummary, type EventDocumentRecord, type EventFeedbackRecord } from '../services/api';
@@ -302,7 +299,6 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
   const [uploadDocName, setUploadDocName] = useState('');
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, File[]>>({});
-  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiGenerated, setAiGenerated] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<AiAnalysis | null>(null);
@@ -896,7 +892,6 @@ Attendance: ${event.attendance}%</p>
       throw new Error('Failed to generate PDF download');
     }
     const bytes = await pdf.save();
-    const objectUrl = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: 'application/pdf' }));
     const objectUrl = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
     const link = document.createElement('a');
     link.href = objectUrl;
