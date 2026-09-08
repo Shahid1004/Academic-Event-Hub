@@ -2,6 +2,13 @@ const mongoose = require("mongoose");
 const Attendance = require("../models/Attendance");
 const Event = require("../models/Event");
 
+const findEvent = async eventId => {
+  const byPublicId = await Event.findOne({ id: eventId }).lean();
+  if (byPublicId) return byPublicId;
+  if (mongoose.Types.ObjectId.isValid(eventId)) return Event.findById(eventId).lean();
+  return null;
+};
+
 const defaultStudents = [
   { regNo: "22IT001", studentName: "Arun Kumar M", className: "III IT A", department: "IT", status: "" },
   { regNo: "22IT002", studentName: "Bhavya S", className: "III IT A", department: "IT", status: "" },

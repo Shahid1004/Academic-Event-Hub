@@ -2,7 +2,7 @@ const express = require("express");
 const multer = require("multer");
 const { authorize } = require("../middleware/authMiddleware");
 const {
-	listEventDocuments, uploadEventDocument, downloadEventDocument, deleteEventDocument,
+	listEventDocuments, uploadEventDocument, downloadEventDocument, deleteEventDocument, replaceEventDocument, mergeEventDocuments,
 	uploadRoot, maxFileSize
 } = require("../controllers/eventDocumentController");
 const { authenticate } = require("../middleware/authMiddleware");
@@ -22,7 +22,9 @@ const uploadFile = (req, res, next) => upload.single("file")(req, res, error => 
 
 router.get("/event/:eventId", authenticate, listEventDocuments);
 router.post("/event/:eventId", authenticate, authorize("admin", "hod", "coordinator", "faculty"), uploadFile, uploadEventDocument);
+router.post("/merged/event/:eventId", authenticate, authorize("admin", "hod", "coordinator", "faculty"), mergeEventDocuments);
 router.get("/file/:documentId", authenticate, downloadEventDocument);
 router.delete("/:documentId", authenticate, authorize("admin", "hod", "coordinator", "faculty"), deleteEventDocument);
+router.put("/:documentId", authenticate, authorize("admin", "hod", "coordinator", "faculty"), uploadFile, replaceEventDocument);
 
 module.exports = router;

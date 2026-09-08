@@ -46,8 +46,6 @@ export interface DashboardSummary {
   academicYears: string[];
 }
 
-export type Department = 'IT' | 'AIDS' | 'BOTH';
-
 export type EventType =
   | 'Hackathon'
   | 'Vervathon'

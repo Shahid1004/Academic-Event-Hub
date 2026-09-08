@@ -15,7 +15,6 @@ import MyAssignedEvents from './pages/MyAssignedEvents';
 import EventDetails from './pages/EventDetails';
 import CalendarPage from './pages/CalendarPage';
 import Analytics from './pages/Analytics';
-import Reports from './pages/Reports';
 import FormalAcademicReport from './pages/FormalAcademicReport';
 import Settings from '@/pages/Settings';
 import CreateEvent from './pages/CreateEvent';
@@ -23,6 +22,8 @@ import SemesterExcel from './pages/SemesterExcel';
 import UserManagement from './pages/UserManagement';
 import StudentDashboard from './pages/StudentDashboard';
 import Documentation from './pages/Documentation';
+import StudentDashboard from './pages/StudentDashboard';
+import StudentEvent from './pages/StudentEvent';
 
 interface StoredUser {
   id?: string;
@@ -128,6 +129,12 @@ export default function App() {
     window.scrollTo(0, 0);
   };
 
+  const handleSettingsChange = async (nextSettings: AppSettings) => {
+    const savedSettings = await updateSettings(nextSettings);
+    setSettings(savedSettings);
+    applyTheme(savedSettings);
+  };
+
   if (page === 'login') {
     return (
       <Login
@@ -145,6 +152,9 @@ export default function App() {
 
   if (isStudent) {
     if (page === 'student-event') return <EventDetails eventId={selectedEventId} navigate={navigate} />;
+    if (page === 'student-event') {
+      return <StudentEvent eventId={selectedEventId} navigate={navigate} />;
+    }
     return <StudentDashboard navigate={navigate} />;
   }
 
@@ -264,7 +274,7 @@ export default function App() {
         return <StudentDashboard navigate={navigate} />;
 
       case 'student-event':
-        return <EventDetails eventId={selectedEventId} navigate={navigate} />;
+        return <StudentEvent eventId={selectedEventId} navigate={navigate} />;
 
       default:
         return (
@@ -286,15 +296,8 @@ export default function App() {
       academicYear={academicYear}
       academicYears={academicYears}
       onAcademicYearChange={setAcademicYear}
-      themeMode={settings?.theme.mode || 'light'}
-      onThemeToggle={() => {
-        if (!settings) return;
-        const nextMode: AppSettings['theme']['mode'] = settings.theme.mode === 'dark' ? 'light' : 'dark';
-        const nextSettings = { ...settings, theme: { ...settings.theme, mode: nextMode } };
-        setSettings(nextSettings);
-        applyTheme(nextSettings);
-        updateSettings({ theme: nextSettings.theme }).catch(() => undefined);
-      }}
+      settings={settings}
+      onSettingsChange={handleSettingsChange}
     >
       {renderPage()}
     </Layout>

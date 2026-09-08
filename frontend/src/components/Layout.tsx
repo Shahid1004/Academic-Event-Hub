@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Page, UserProfile } from '../types';
+import type { AppSettings, Page, UserProfile } from '../types';
 import { notifications } from '../data/sampleData';
 
 interface LayoutProps {
@@ -13,6 +13,8 @@ interface LayoutProps {
   profile: UserProfile;
   themeMode: 'light' | 'dark';
   onThemeToggle: () => void;
+  settings: AppSettings | null;
+  onSettingsChange: (settings: AppSettings) => void | Promise<void>;
 }
 
 const sidebarSections = [
@@ -84,9 +86,26 @@ function Icon({ name, className = 'w-5 h-5' }: { name: string; className?: strin
 export { Icon };
 
 export default function Layout({ currentPage, navigate, children, userRole = 'faculty', academicYear, academicYears, onAcademicYearChange, profile, themeMode, onThemeToggle }: LayoutProps) {
+export default function Layout({ currentPage, navigate, children, userRole = 'faculty', academicYear, academicYears, onAcademicYearChange, profile, settings, onSettingsChange }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+
+  const visibleNotifications = settings
+    ? notifications.filter(notification => settings.notifications[notification.preferenceKey] !== false)
+    : notifications;
+  const confirmLogout = () => {
+    if (window.confirm('Are you sure you want to log out?')) {
+      localStorage.clear();
+      sessionStorage.clear();
+      navigate('login' as Page);
+    }
+  };
+  const toggleTheme = () => {
+    if (!settings) return;
+    const mode = settings.theme.mode === 'dark' ? 'light' : 'dark';
+    onSettingsChange({ ...settings, theme: { ...settings.theme, mode } });
+  };
 
   const avatarClass = profile.avatarColor === 'blue' ? 'bg-blue-600' : profile.avatarColor === 'teal' ? 'bg-teal-600' : profile.avatarColor === 'rose' ? 'bg-rose-600' : 'bg-indigo-600';
   const userInitials = profile.name.trim().split(/\s+/).map(word => word[0]).join('').slice(0, 2).toUpperCase() || 'U';
@@ -171,6 +190,7 @@ export default function Layout({ currentPage, navigate, children, userRole = 'fa
                 <div className="text-xs text-slate-400">{profile.designation || profile.role} — {profile.department}</div>
               </div>
               <button onClick={logout} className="text-slate-400 hover:text-slate-600" aria-label="Log out">
+              <button onClick={confirmLogout} className="text-slate-400 hover:text-slate-600">
                 <Icon name="logout" className="w-4 h-4" />
               </button>
             </div>
@@ -210,6 +230,13 @@ export default function Layout({ currentPage, navigate, children, userRole = 'fa
               title={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}
             >
               <span className="text-base" aria-hidden="true">{themeMode === 'dark' ? '☀️' : '🌙'}</span>
+              onClick={toggleTheme}
+              disabled={!settings}
+              aria-label={settings?.theme.mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              title={settings?.theme.mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg disabled:opacity-50"
+            >
+              <span className="text-base">{settings?.theme.mode === 'dark' ? '☀' : '☾'}</span>
             </button>
             {/* Notifications */}
             <div className="relative">
@@ -224,10 +251,11 @@ export default function Layout({ currentPage, navigate, children, userRole = 'fa
                 <div className="absolute right-0 top-11 w-80 bg-white rounded-2xl shadow-xl border border-slate-100 z-50 overflow-hidden">
                   <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
                     <span className="font-semibold text-slate-800">Notifications</span>
-                    <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">{notifications.length} new</span>
+                    <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">{visibleNotifications.length} new</span>
                   </div>
                   <div className="max-h-72 overflow-y-auto">
-                    {notifications.map(n => (
+                    {visibleNotifications.length === 0 && <p className="px-4 py-6 text-sm text-slate-500">No new notifications.</p>}
+                    {visibleNotifications.map(n => (
                       <button
                         key={n.id}
                         onClick={() => { navigate('event-details', n.eventId); setShowNotifications(false); }}
@@ -276,6 +304,7 @@ export default function Layout({ currentPage, navigate, children, userRole = 'fa
                   <div className="border-t border-slate-100">
                     <button
                       onClick={logout}
+                      onClick={confirmLogout}
                       className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50"
                     >
                       Sign Out

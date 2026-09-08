@@ -30,8 +30,9 @@ export default function Documentation({ eventId, navigate }: DocumentationProps)
     const search = eventSearch.trim().toLowerCase();
     return search ? events.filter(event => `${event.name} ${event.id}`.toLowerCase().includes(search)) : events;
   }, [events, eventSearch]);
-  useEffect(() => { getEvents().then(data => { setEvents(data); if (!selectedId && data[0]) setSelectedId(data[0].id); }).catch(() => setError('Unable to load events.')); }, [selectedId]);
-  useEffect(() => { if (!selectedId) return; setLoading(true); getEventDocuments(selectedId).then(setDocuments).catch(() => setDocuments([])).finally(() => setLoading(false)); }, [selectedId]);
+  useEffect(() => { if (eventId) setSelectedId(eventId); }, [eventId]);
+  useEffect(() => { getEvents().then(data => { setEvents(data); if (!selectedId && data[0]) setSelectedId(data[0].id); }).catch(() => setError('Unable to load events.')); }, []);
+  useEffect(() => { if (!selectedId || selectedId === '__other__') { setDocuments([]); return; } setLoading(true); setError(''); getEventDocuments(selectedId).then(setDocuments).catch(() => { setDocuments([]); setError('Unable to load documents for this event.'); }).finally(() => setLoading(false)); }, [selectedId]);
 
   const validate = (file: File) => {
     if (file.size > maxSize) return 'File exceeds the 100 MB upload limit.';
@@ -56,9 +57,9 @@ export default function Documentation({ eventId, navigate }: DocumentationProps)
     }
     finally { setProgress(0); }
   };
-  const preview = async (fileRecord: EventDocumentRecord) => { const bytes = await getEventDocumentBytes(fileRecord.url); const url = URL.createObjectURL(new Blob([bytes], { type: fileRecord.mimeType || fileRecord.type })); window.open(url, '_blank', 'noopener,noreferrer'); setTimeout(() => URL.revokeObjectURL(url), 60000); };
-  const download = async (fileRecord: EventDocumentRecord) => { const bytes = await getEventDocumentBytes(fileRecord.url); const link = window.document.createElement('a'); link.href = URL.createObjectURL(new Blob([bytes], { type: fileRecord.mimeType || fileRecord.type })); link.download = fileRecord.name; link.click(); URL.revokeObjectURL(link.href); };
-  const remove = async (fileRecord: EventDocumentRecord) => { if (!window.confirm(`Delete ${fileRecord.name}?`)) return; await deleteEventDocument(fileRecord.id); setDocuments(previous => previous.filter(item => item.id !== fileRecord.id)); };
+  const preview = async (fileRecord: EventDocumentRecord) => { try { const bytes = await getEventDocumentBytes(fileRecord.url); const url = URL.createObjectURL(new Blob([bytes], { type: fileRecord.mimeType || fileRecord.type })); window.open(url, '_blank', 'noopener,noreferrer'); setTimeout(() => URL.revokeObjectURL(url), 60000); } catch { setError('Unable to open this document.'); } };
+  const download = async (fileRecord: EventDocumentRecord) => { try { const bytes = await getEventDocumentBytes(fileRecord.url); const url = URL.createObjectURL(new Blob([bytes], { type: fileRecord.mimeType || fileRecord.type })); const link = window.document.createElement('a'); link.href = url; link.download = fileRecord.name; link.click(); URL.revokeObjectURL(url); } catch { setError('Unable to download this document.'); } };
+  const remove = async (fileRecord: EventDocumentRecord) => { if (!window.confirm(`Delete ${fileRecord.name}?`)) return; try { await deleteEventDocument(fileRecord.id); setDocuments(previous => previous.filter(item => item.id !== fileRecord.id)); } catch { setError('Unable to delete this document.'); } };
 
   return <div className="p-6 space-y-5 min-h-screen bg-slate-50">
     <div><button onClick={() => navigate('dashboard')} className="text-sm text-indigo-600 mb-2">← Back to Dashboard</button><h1 className="text-3xl font-bold text-slate-900">Event Documentation</h1><p className="text-sm text-slate-500 mt-1">Upload and manage original documents and photographs for one selected event.</p></div>

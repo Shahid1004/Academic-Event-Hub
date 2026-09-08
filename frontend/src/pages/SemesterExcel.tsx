@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { academicYears, eventTypes } from '../data/sampleData';
 import * as XLSX from 'xlsx';
+import { sampleEvents, academicYears, eventTypes } from '../data/sampleData';
+import * as XLSX from 'xlsx';
+import { useEffect, useState } from 'react';
 import type { EventRecord } from '../types';
 import { getEvents } from '../services/api';
 
@@ -54,7 +57,7 @@ export default function SemesterExcel({ academicYear = '' }: SemesterExcelProps)
         'Academic Year': e.academicYear,
         'Semester': `Sem ${e.semester}`,
         'Department': e.department,
-        'Year/Class': e.targetStudents.split(' ').slice(0, 3).join(' '),
+        'Year/Class': (e.targetStudents || '').split(' ').slice(0, 3).join(' '),
         'Event Type': e.type,
         'Event Name': e.name,
         'Event Date': e.date,

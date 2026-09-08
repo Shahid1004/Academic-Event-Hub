@@ -7,6 +7,13 @@ const attendanceSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    event: {
+      type: String,
+      index: true,
+    },
+    studentId: {
+      type: String,
+    },
     regNo: {
       type: String,
       required: true,

@@ -23,6 +23,7 @@ import { getEventAttendanceApi, getEvents, importEventAttendanceRosterApi, qrChe
 import { sampleEvents } from '../data/sampleData';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { generateFinalEventReport } from '../utils/finalEventReportGenerator';
+import { deleteEventDocument, generateMergedEventReport, getEventAttendance, getEventDocumentBytes, getEventDocuments, getEventFeedback, getFeedbackAnalytics, getFeedbackForm, replaceEventDocument, saveFeedbackForm, uploadEventDocument, type EventAttendanceSummary, type EventDocumentRecord, type EventFeedbackRecord, type FeedbackAnalytics, type FeedbackQuestion, type StudentFeedbackForm } from '../services/api';
 
 interface EventDetailsProps {
   eventId: string;
@@ -30,7 +31,6 @@ interface EventDetailsProps {
 }   
 
 type Tab = 'overview' | 'attendance' | 'feedback' | 'documents' | 'ai-analysis' | 'final-report' | 'merged-report';
-type MergeItem = EventDocumentRecord & { localFile?: File };
 
 const reportValue = (value: unknown) => value === undefined || value === null || value === '' ? 'Not Available' : String(value);
 const storedReportValue = (event: EventRecord, ...keys: string[]) => {
@@ -147,6 +147,24 @@ const documents = [
   { name: 'Event Summary Report', status: 'Under Review', file: 'summary_report.pdf' },
   { name: 'Other Documents', status: 'Pending', file: '' },
 ];
+
+const documentCategories = [
+  { category: 'Event Proposal / Permission Letter', name: 'Proposal / Permission Letter' },
+  { category: 'Event Circular / Invitation', name: 'Circular' },
+  { category: 'Resource Person / Guest Documents', name: 'Resource Person Details / Profile' },
+  { category: 'Attendance Documents', name: 'Attendance' },
+  { category: 'Feedback Documents', name: 'Feedback' },
+  { category: 'Event Photographs', name: 'Event Photographs' },
+  { category: 'Supporting Documents', name: 'Supporting Documents' },
+  { category: 'Other', name: 'Other Documents' },
+];
+const documentCategoryForDisplay = (name: string) => documentCategories.find(item => item.name === name)?.category || name;
+const emptyEvent = (id: string): EventRecord => ({
+  id, name: 'Event details unavailable', type: 'Other', department: 'BOTH', academicYear: '', date: '',
+  startTime: '', endTime: '', venue: '', mode: '', coordinator: '',
+  resourcePerson: { name: '', designation: '', organization: '', contact: '', email: '' },
+  actualParticipants: 0, attendance: 0, feedbackScore: 0, docStatus: 'Pending', reportStatus: 'Not Generated'
+});
 
 const docStatusColors: Record<string, string> = {
   'Approved': 'bg-green-100 text-green-700',
@@ -310,6 +328,9 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
   const [uploadDocName, setUploadDocName] = useState('');
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, File[]>>({});
+  const [uploadCategory, setUploadCategory] = useState('Supporting Documents');
+  const [replaceDocumentId, setReplaceDocumentId] = useState<string | null>(null);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiGenerated, setAiGenerated] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<AiAnalysis | null>(null);
@@ -318,7 +339,6 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
   const [reportGenerated, setReportGenerated] = useState(false);
   const [reportDownloadLoading, setReportDownloadLoading] = useState(false);
   const [showOtherDocModal, setShowOtherDocModal] = useState(false);
-  const [googleFormLink, setGoogleFormLink] = useState('');
   const [docOrder, setDocOrder] = useState<number[]>(documents.map((_, i) => i));
   const [mergedReportGenerated, setMergedReportGenerated] = useState(false);
   const [mergedReportLoading, setMergedReportLoading] = useState(false);
@@ -329,7 +349,25 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
 
+  const [feedbackFormTitle, setFeedbackFormTitle] = useState('Event Feedback');
+  const [feedbackFormStatus, setFeedbackFormStatus] = useState<'Draft' | 'Published' | 'Closed'>('Draft');
+  const [feedbackFormQuestions, setFeedbackFormQuestions] = useState<FeedbackQuestion[]>([]);
+  const [feedbackFormSaving, setFeedbackFormSaving] = useState(false);
+  const [feedbackFormMessage, setFeedbackFormMessage] = useState('');
+  const [feedbackForm, setFeedbackForm] = useState<StudentFeedbackForm | null>(null);
+  const [feedbackAnalytics, setFeedbackAnalytics] = useState<FeedbackAnalytics | null>(null);
+  const [feedbackAnalyticsLoading, setFeedbackAnalyticsLoading] = useState(false);
+  const [eventDocuments, setEventDocuments] = useState<EventDocumentRecord[]>([]);
+  const [documentError, setDocumentError] = useState<string | null>(null);
+
+  const [loadedEvent, setLoadedEvent] = useState<EventRecord | null>(null);
+  const [eventLoading, setEventLoading] = useState(true);
+  const [eventError, setEventError] = useState(false);
+  const event = loadedEvent || sampleEvents.find(e => e.id === eventId) || emptyEvent(eventId);
   useEffect(() => {
+    setLoadedEvent(null);
+    setEventLoading(true);
+    setEventError(false);
     let active = true;
     setFeedbackLoading(true);
     setFeedbackError(null);
@@ -337,6 +375,32 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
       .then(records => { if (active) setFeedbackRecords(records); })
       .catch(error => { console.error('Feedback lookup failed:', error); if (active) setFeedbackError('Unable to load feedback records.'); })
       .finally(() => { if (active) setFeedbackLoading(false); });
+    return () => { active = false; };
+  }, [eventId]);
+  useEffect(() => {
+    let active = true;
+    setFeedbackAnalyticsLoading(true);
+    const refreshFeedbackData = () => Promise.all([getFeedbackForm(eventId), getFeedbackAnalytics(eventId)])
+      .then(([form, analytics]) => {
+        if (!active) return;
+        setFeedbackForm(form);
+        setFeedbackAnalytics(analytics);
+        setFeedbackFormTitle(form?.title || 'Event Feedback');
+        setFeedbackFormStatus((form?.status as 'Draft' | 'Published' | 'Closed') || 'Draft');
+        setFeedbackFormQuestions(form?.questions || []);
+      })
+      .catch(error => { if (active) setFeedbackError(error?.response?.data?.message || 'Unable to load feedback form.'); })
+      .finally(() => { if (active) setFeedbackAnalyticsLoading(false); });
+    refreshFeedbackData();
+    const refreshTimer = window.setInterval(refreshFeedbackData, 30000);
+    return () => { active = false; window.clearInterval(refreshTimer); };
+  }, [eventId]);
+  useEffect(() => {
+    let active = true;
+    setDocumentError(null);
+    getEventDocuments(eventId)
+      .then(records => { if (active) setEventDocuments(records); })
+      .catch(() => { if (active) { setEventDocuments([]); setDocumentError('Unable to load documents for this event.'); } });
     return () => { active = false; };
   }, [eventId]);
 
@@ -352,16 +416,72 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
   const [eventLoading, setEventLoading] = useState(true);
   const [eventError, setEventError] = useState(false);
 
+  const reportEvent = event as EventRecord & Record<string, unknown>;
+  const reportTopics = Array.isArray(reportEvent.topics) ? reportEvent.topics.map(String).join('\n') : reportValue(reportEvent.topics || reportEvent.topicsCovered || reportEvent.conceptsCovered);
+  const reportOutcomes = Array.isArray(reportEvent.keyOutcomes) ? reportEvent.keyOutcomes.map(String).join('\n') : reportValue(reportEvent.keyOutcomes || reportEvent.outcomes);
+  const reportRecommendations = Array.isArray(reportEvent.recommendations) ? reportEvent.recommendations.map(String).join('\n') : reportValue(reportEvent.recommendations || reportEvent.correctiveActions);
+  const feedbackOverallValues = feedbackRecords.map(record => feedbackNumber(record, 'overallRating', 'overall', 'rating', 'overallScore')).filter((value): value is number => value !== undefined);
+  const feedbackHighRating = feedbackOverallValues.length ? `${((feedbackOverallValues.filter(value => value >= 4).length / feedbackOverallValues.length) * 100).toFixed(1)}%` : 'Not Available';
+  const feedbackDistribution = [5, 4, 3, 2, 1].map(rating => ({ rating, count: feedbackAnalytics?.ratingDistribution?.[String(rating)] || 0 }));
+  const feedbackQuestions = [
+    { q: 'Overall satisfaction', keys: ['overallSatisfaction', 'satisfactionRating', 'satisfaction'] },
+    { q: 'Content quality', keys: ['sessionContentRating', 'contentRating', 'content', 'sessionContent'] },
+    { q: 'Presentation quality', keys: ['speakerEffectivenessRating', 'speakerRating', 'speakerEffectiveness', 'speaker'] },
+    { q: 'Expectations met', keys: ['expectationsMet', 'expectationRating', 'expectations'] },
+    { q: 'Would recommend', keys: ['wouldRecommend', 'recommendationRating', 'recommend'] },
+  ].map(question => ({ ...question, average: feedbackAverage(feedbackRecords, ...question.keys) }));
+  const feedbackAnalysisText = feedbackRecords.length
+    ? `Feedback analysis was generated from ${feedbackRecords.length} response(s). ${feedbackOverallValues.length ? `The average overall rating was ${feedbackAverage(feedbackRecords, 'overallRating', 'overall', 'rating', 'overallScore')}, with ${feedbackOverallValues.filter(value => value >= 4).length} response(s) rated 4 or above.` : 'An overall rating was not recorded.'}`
+    : 'No feedback responses were recorded for this event.';
+  const feedbackComments = [...feedbackRecords
+    .map(record => record.comment || record.comments || record.response)
+    .filter((comment): comment is string => typeof comment === 'string' && comment.trim().length > 0), ...(feedbackAnalytics?.comments || []).map(comment => `${comment.question}: ${comment.answer}`)];
+  const addFeedbackQuestion = () => setFeedbackFormQuestions(previous => [...previous, { id: `question-${Date.now()}`, text: '', type: 'text', required: false }]);
+  const saveEventFeedbackForm = async () => {
+    const questions = feedbackFormQuestions.filter(question => question.text.trim());
+    if (!questions.length) { setFeedbackFormMessage('Add at least one question before saving.'); return; }
+    if (!feedbackFormTitle.trim()) { setFeedbackFormMessage('Please enter a form title.'); return; }
+    setFeedbackFormSaving(true); setFeedbackFormMessage('');
+    try {
+      const saved = await saveFeedbackForm(event.id, { title: feedbackFormTitle, status: feedbackFormStatus, questions });
+      setFeedbackForm(saved);
+      setFeedbackFormQuestions(saved.questions);
+      setFeedbackFormStatus((saved.status as 'Draft' | 'Published' | 'Closed') || feedbackFormStatus);
+      setFeedbackFormMessage(`✅ Feedback form saved successfully. Status: ${saved.status}`);
+      try { const analytics = await getFeedbackAnalytics(event.id); setFeedbackAnalytics(analytics); } catch { /* analytics optional */ }
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Unable to save the feedback form.';
+      setFeedbackFormMessage(`❌ ${msg}`);
+      console.error('saveFeedbackForm error:', err?.response?.data || err);
+    }
+    finally { setFeedbackFormSaving(false); }
+  };
+
+  const reportSections = [
+    { num: 1, title: 'Event Overview', content: `Event Name: ${reportValue(event.name)}\nEvent Type: ${reportValue(event.type)}\nDepartment: ${reportValue(event.department)}\nDate: ${reportValue(event.date)}\nTime: ${event.startTime && event.endTime ? `${event.startTime} - ${event.endTime}` : 'Not Available'}\nVenue: ${reportValue(event.venue)}\nMode: ${reportValue(event.mode)}\nCoordinator: ${reportValue(event.coordinator)}\nTarget Participants: ${reportValue(event.targetStudents)}` },
+    { num: 2, title: 'Objective', content: reportValue(event.objective) },
+    { num: 3, title: 'Permission / Proposal Details', content: `Approval status: ${storedReportValue(event, 'approvalStatus', 'permissionStatus')}\nProposal submission date: ${storedReportValue(event, 'proposalSubmissionDate', 'proposalDate', 'submissionDate')}\nApproval date: ${storedReportValue(event, 'approvalDate', 'permissionApprovalDate')}\nHOD/Principal approval details: ${storedReportValue(event, 'approvalDetails', 'hodApprovalDetails', 'principalApprovalDetails')}` },
+    { num: 4, title: 'Resource Person / Guest Details', content: `Name: ${reportValue(event.resourcePerson?.name)}\nDesignation: ${reportValue(event.resourcePerson?.designation)}\nOrganization: ${reportValue(event.resourcePerson?.organization)}\nContact: ${reportValue(event.resourcePerson?.contact)}\nEmail: ${reportValue(event.resourcePerson?.email)}\nSession Topic: ${storedReportValue(event, 'sessionTopic', 'topic', 'topics')}` },
+    { num: 5, title: 'Event Execution Details', content: storedReportValue(event, 'executionDetails', 'executionSummary') !== 'Not Available' ? String(storedReportValue(event, 'executionDetails', 'executionSummary')) : `The event was conducted in ${reportValue(event.mode)} mode at ${reportValue(event.venue)}. Coordinator: ${reportValue(event.coordinator)}. Description: ${reportValue(event.description)}` },
+    { num: 6, title: 'Topics / Concepts Covered', content: reportTopics },
+    { num: 7, title: 'Student Participation', content: `Target students: ${reportValue(event.targetStudents)}\nExpected participants: ${reportValue(event.expectedParticipants)}\nActual participants: ${reportValue(event.actualParticipants)}` },
+    { num: 8, title: 'Attendance Summary', content: `Total students: ${storedReportValue(event, 'totalStudents') !== 'Not Available' ? storedReportValue(event, 'totalStudents') : reportValue(event.actualParticipants)}\nPresent: ${storedReportValue(event, 'present', 'studentsPresent', 'presentStudents')}\nAbsent: ${storedReportValue(event, 'absent', 'studentsAbsent', 'absentStudents')}\nAttendance percentage: ${event.attendance ? `${event.attendance}%` : 'Not Available'}` },
+    { num: 9, title: 'Feedback Summary and Analysis', content: feedbackLoading ? 'Loading feedback records...' : feedbackError || `Total feedback received: ${feedbackRecords.length || 'No feedback responses were recorded for this event.'}\nAverage overall rating: ${feedbackAverage(feedbackRecords, 'overallRating', 'overall', 'rating', 'overallScore')}\nSession content rating: ${feedbackAverage(feedbackRecords, 'sessionContentRating', 'contentRating', 'content', 'sessionContent')}\nSpeaker effectiveness rating: ${feedbackAverage(feedbackRecords, 'speakerEffectivenessRating', 'speakerRating', 'speakerEffectiveness', 'speaker')}\nUsefulness to students: ${feedbackAverage(feedbackRecords, 'usefulnessToStudents', 'usefulnessRating', 'usefulness', 'relevanceRating')}\nOverall satisfaction/response: ${feedbackAverage(feedbackRecords, 'overallSatisfaction', 'satisfactionRating', 'satisfaction')}\nPercentage rating 4 or above: ${feedbackHighRating}\nAnalysis: ${feedbackAnalysisText}` },
+    { num: 10, title: 'Payment / Remuneration Details', content: `Resource person remuneration: ${storedReportValue(event, 'remuneration', 'resourcePersonRemuneration', 'paymentAmount')}\nPayment method: ${storedReportValue(event, 'paymentMethod')}\nPayment date: ${storedReportValue(event, 'paymentDate')}\nTransaction reference: ${storedReportValue(event, 'transactionReference', 'transactionId')}` },
+    { num: 11, title: 'Key Outcomes', content: reportOutcomes },
+    { num: 12, title: 'Corrective Action / Recommendations', content: reportRecommendations },
+    { num: 13, title: 'Conclusion', content: `The ${reportValue(event.type)} titled "${reportValue(event.name)}" was conducted on ${reportValue(event.date)} with ${reportValue(event.actualParticipants)} participant(s) recorded. The event addressed its recorded objective, with attendance recorded as ${event.attendance ? `${event.attendance}%` : 'Not Available'} and feedback recorded as ${event.feedbackScore ? `${event.feedbackScore}/5` : 'Not Available'}.` },
+  ];
   useEffect(() => {
     setEventLoading(true);
     setEventError(false);
     getEvents()
       .then(events => {
-        setEvent(events.find(item => item.id === eventId) || null);
+        setLoadedEvent(events.find(item => item.id === eventId) || null);
         setEventError(!events.some(item => item.id === eventId));
       })
       .catch(() => {
-        setEvent(null);
+        setLoadedEvent(null);
         setEventError(true);
       })
       .finally(() => setEventLoading(false));
@@ -378,7 +498,7 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
   }, [eventId]);
 
   if (eventLoading) return <div className="p-6 text-slate-500">Loading event details...</div>;
-  if (!event) return (
+  if (!loadedEvent) return (
     <div className="p-6 space-y-3">
       <button onClick={() => navigate('all-events')} className="text-sm text-indigo-600 hover:text-indigo-800">← Back to Events</button>
       <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -433,7 +553,42 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
     { id: 'merged-report', label: 'Merged Report' },
   ];
 
-  const docPct = event.docStatus === 'Completed' ? 100 : event.docStatus === 'Partial' ? 60 : 20;
+  const completedDocumentCategories = new Set(eventDocuments.map(document => document.category));
+  const docPct = Math.round((documentCategories.filter(item => completedDocumentCategories.has(item.category)).length / documentCategories.length) * 1000) / 10;
+  const refreshEventDocuments = async () => {
+    const records = await getEventDocuments(eventId);
+    setEventDocuments(records);
+  };
+  const openEventDocument = async (document: EventDocumentRecord) => {
+    try {
+      const bytes = await getEventDocumentBytes(document.url);
+      const url = URL.createObjectURL(new Blob([bytes], { type: document.mimeType || document.type }));
+      window.open(url, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch { setDocumentError('Unable to open this document.'); }
+  };
+  const downloadEventDocument = async (document: EventDocumentRecord) => {
+    try {
+      const bytes = await getEventDocumentBytes(document.url);
+      const url = URL.createObjectURL(new Blob([bytes], { type: document.mimeType || document.type }));
+      const link = window.document.createElement('a');
+      link.href = url;
+      link.download = document.name;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch { setDocumentError('Unable to download this document.'); }
+  };
+  const deleteEventDocumentRecord = async (document: EventDocumentRecord) => {
+    if (!window.confirm(`Delete ${document.name}?`)) return;
+    try { await deleteEventDocument(document.id); await refreshEventDocuments(); }
+    catch { setDocumentError('Unable to delete this document.'); }
+  };
+  const beginDocumentUpload = (category: string, name: string, documentId?: string) => {
+    setUploadCategory(category);
+    setUploadDocName(name);
+    setReplaceDocumentId(documentId || null);
+    setShowUploadModal(true);
+  };
 
   const filteredStudents = attendanceRecords.filter(s => {
     const matchFilter = attendanceFilter === 'All' || s.status === attendanceFilter;
@@ -912,76 +1067,33 @@ Attendance: ${event.attendance}%</p>
     
     setMergedReportLoading(true);
     try {
-      const mergedPdf = await PDFDocument.create();
-      const remoteDocuments: EventDocumentRecord[] = await getEventDocuments(event.id).catch(error => {
-        console.error('Event document lookup failed:', error);
-        return [];
+      const currentDocuments = await getEventDocuments(event.id);
+      if (!currentDocuments.length) {
+        window.alert('Upload documents for this event before generating the merged report.');
+        return false;
+      }
+      const orderedIds = docOrder.flatMap(index => {
+        const category = documentCategoryForDisplay(documents[index].name);
+        return currentDocuments.filter(document => document.category === category).map(document => document.id);
       });
-      const localDocuments: MergeItem[] = docOrder.flatMap(index => (uploadedFiles[documents[index].name] || []).map(file => ({
-        id: `local-${index}-${file.name}`,
-        name: file.name,
-        type: file.type,
-        url: '',
-        category: documents[index].name,
-        uploadedDate: new Date().toISOString(),
-        localFile: file,
-        order: index,
-      })));
-      const mergeItems: MergeItem[] = [
-        ...remoteDocuments.map(file => ({ ...file, order: file.order ?? 0 })),
-        ...localDocuments.map(file => ({ ...file, order: file.order + remoteDocuments.length })),
-      ].sort((left, right) => left.order - right.order);
-
-      if (!mergeItems.length) {
-        window.alert('No documents or photos have been uploaded for this event.');
-        return false;
-      }
-
-      let mergedPageCount = 0;
-      const skippedFiles: string[] = [];
-      for (const file of mergeItems) {
-        const bytes = file.localFile ? await file.localFile.arrayBuffer() : await getEventDocumentBytes(file.url);
-        const fileType = (file.type || '').toLowerCase();
-        const fileName = file.name.toLowerCase();
-        if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
-          const sourcePdf = await PDFDocument.load(bytes);
-          const pages = await mergedPdf.copyPages(sourcePdf, sourcePdf.getPageIndices());
-          pages.forEach(sourcePage => { mergedPdf.addPage(sourcePage); mergedPageCount += 1; });
-        } else if (fileType === 'image/jpeg' || fileType === 'image/jpg' || fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')) {
-          const image = await mergedPdf.embedJpg(bytes);
-          const page = mergedPdf.addPage([595, 842]);
-          const scale = Math.min(555 / image.width, 790 / image.height);
-          const width = image.width * scale;
-          const height = image.height * scale;
-          page.drawImage(image, { x: (595 - width) / 2, y: (842 - height) / 2, width, height });
-          mergedPageCount += 1;
-        } else if (fileType === 'image/png' || fileName.endsWith('.png')) {
-          const image = await mergedPdf.embedPng(bytes);
-          const page = mergedPdf.addPage([595, 842]);
-          const scale = Math.min(555 / image.width, 790 / image.height);
-          const width = image.width * scale;
-          const height = image.height * scale;
-          page.drawImage(image, { x: (595 - width) / 2, y: (842 - height) / 2, width, height });
-          mergedPageCount += 1;
-        } else {
-          skippedFiles.push(file.name);
-        }
-      }
-
-      if (!mergedPageCount) {
-        window.alert('No documents or photos have been uploaded for this event.');
-        return false;
-      }
-      const filename = `${event.name.replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '')}_Merged_Report.pdf`;
-      await downloadPdf(mergedPdf, filename);
-      if (skippedFiles.length) {
-        window.alert(`Merged PDF created. These original files remain available for download but could not be converted to PDF pages: ${skippedFiles.join(', ')}`);
-      }
-      console.log('Merged report downloaded successfully:', filename);
+      const includedIds = new Set(orderedIds);
+      currentDocuments.forEach(document => { if (!includedIds.has(document.id)) orderedIds.push(document.id); });
+      const { bytes } = await generateMergedEventReport(event.id, orderedIds);
+      const safeName = event.name.replace(/[^a-z0-9+]+/gi, '_').replace(/^_+|_+$/g, '') || event.id;
+      const link = document.createElement('a');
+      const objectUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      link.href = objectUrl;
+      link.download = `${safeName}_Merged_Report.pdf`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      setEventDocuments(currentDocuments);
       return true;
     } catch (error) {
       console.error('Merged report download failed:', error);
-      window.alert('Failed to download merged report. Please try again.');
+      const message = error && typeof error === 'object' && 'response' in error
+        ? ((error.response as { data?: { message?: string } })?.data?.message || 'Unable to generate merged report. Please try again.')
+        : 'Unable to generate merged report. Please try again.';
+      window.alert(message);
       return false;
     } finally {
       setMergedReportLoading(false);
@@ -1087,26 +1199,6 @@ Attendance: ${event.attendance}%</p>
               <p className="text-sm text-slate-600">{event.objective}</p>
               <h3 className="font-bold font-heading text-slate-800 mt-4 mb-2">Description</h3>
               <p className="text-sm text-slate-600">{event.description}</p>
-            </div>
-            {/* Lifecycle */}
-            <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-              <h3 className="font-bold font-heading text-slate-800 mb-4">Event Lifecycle</h3>
-              <div className="flex items-center gap-2">
-                {['Proposal', 'Approval', 'Execution', 'Documentation', 'Report', 'Approved'].map((stage, i) => {
-                  const done = event.docStatus === 'Completed' ? i < 6 : event.docStatus === 'Partial' ? i < 4 : i < 3;
-                  return (
-                    <div key={stage} className="flex items-center gap-2">
-                      <div className={`flex flex-col items-center`}>
-                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${done ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
-                          {done ? '✓' : i + 1}
-                        </div>
-                        <span className="text-xs text-slate-500 mt-1 text-center leading-tight w-14">{stage}</span>
-                      </div>
-                      {i < 5 && <div className={`flex-1 h-0.5 mt-0 mb-5 ${done ? 'bg-indigo-600' : 'bg-slate-100'}`} />}
-                    </div>
-                  );
-                })}
-              </div>
             </div>
           </div>
 
@@ -2117,55 +2209,37 @@ Attendance: ${event.attendance}%</p>
 
       {tab === 'feedback' && (
         <div className="space-y-4">
-          {/* Google Form generator */}
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div>
-                <h3 className="font-bold font-heading text-slate-800">Google Form Feedback Link</h3>
-                <p className="text-sm text-slate-500 mt-0.5">Generate a Google Form link to collect student feedback for this event</p>
-              </div>
-              <button
-                onClick={() => setGoogleFormLink(`https://docs.google.com/forms/d/e/1FAIpQLSc${Math.random().toString(36).slice(2, 14)}/viewform?usp=sf_link`)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold"
-              >
-                📝 Generate Google Form Link
-              </button>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div><h3 className="font-bold font-heading text-slate-800">Student Feedback Form</h3><p className="text-sm text-slate-500 mt-0.5">Create the event-linked form students will see.</p></div>
+              <select value={feedbackFormStatus} onChange={e => setFeedbackFormStatus(e.target.value as 'Draft' | 'Published' | 'Closed')} className="px-3 py-2 border border-slate-200 rounded-xl text-sm"><option>Draft</option><option>Published</option><option>Closed</option></select>
             </div>
-            {googleFormLink && (
-              <div className="mt-4 flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl p-3">
-                <span className="text-green-600 text-lg">✅</span>
-                <a href={googleFormLink} target="_blank" rel="noopener noreferrer" className="text-sm text-indigo-600 underline break-all flex-1">{googleFormLink}</a>
-                <button
-                  onClick={() => navigator.clipboard?.writeText(googleFormLink)}
-                  className="text-xs border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-white text-slate-600"
-                >
-                  Copy
-                </button>
-              </div>
-            )}
+            <input value={feedbackFormTitle} onChange={e => setFeedbackFormTitle(e.target.value)} placeholder="Form title" className="mt-4 w-full px-3 py-2 border border-slate-200 rounded-xl text-sm" />
+            <div className="space-y-3 mt-3">{feedbackFormQuestions.map((question, index) => <div key={question.id} className="p-3 border border-slate-100 rounded-xl space-y-2"><div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center"><input value={question.text} onChange={e => setFeedbackFormQuestions(previous => previous.map(item => item.id === question.id ? { ...item, text: e.target.value } : item))} placeholder={`Question ${index + 1}`} className="px-3 py-2 border border-slate-200 rounded-xl text-sm" /><select value={question.type} onChange={e => setFeedbackFormQuestions(previous => previous.map(item => item.id === question.id ? { ...item, type: e.target.value as FeedbackQuestion['type'], options: e.target.value === 'multiple-choice' ? (item.options?.length ? item.options : ['']) : item.options } : item))} className="px-2 py-2 border border-slate-200 rounded-xl text-sm"><option value="text">Text</option><option value="rating">Rating</option><option value="yes-no">Yes / No</option><option value="multiple-choice">Multiple Choice</option></select><label className="text-xs text-slate-500 flex items-center gap-1"><input type="checkbox" checked={Boolean(question.required)} onChange={e => setFeedbackFormQuestions(previous => previous.map(item => item.id === question.id ? { ...item, required: e.target.checked } : item))} /> Required</label><button onClick={() => setFeedbackFormQuestions(previous => previous.filter(item => item.id !== question.id))} className="text-xs text-red-500">Remove</button></div>{question.type === 'multiple-choice' && <input value={(question.options || []).join(', ')} onChange={e => setFeedbackFormQuestions(previous => previous.map(item => item.id === question.id ? { ...item, options: e.target.value.split(',').map(option => option.trim()).filter(Boolean) } : item))} placeholder="Options separated by commas" className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm" />}</div>)}</div>
+            <div className="flex gap-2 mt-4"><button onClick={addFeedbackQuestion} className="px-3 py-2 border border-slate-200 rounded-xl text-sm text-slate-600">Add Question</button><button onClick={saveEventFeedbackForm} disabled={feedbackFormSaving} className="px-4 py-2 bg-indigo-600 disabled:bg-indigo-300 text-white rounded-xl text-sm font-semibold">{feedbackFormSaving ? 'Saving...' : 'Save Feedback Form'}</button></div>
+            {feedbackFormMessage && <p className="text-sm mt-3 text-slate-600">{feedbackFormMessage}</p>}
           </div>
-
           {/* Submission stats */}
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold font-heading text-slate-800">Feedback Submissions</h3>
               <span className="px-3 py-1 rounded-full text-sm font-semibold bg-indigo-100 text-indigo-700">
-                {feedbackRecords.length} responses recorded
+                {feedbackAnalyticsLoading ? 'Loading...' : `${feedbackAnalytics?.submittedStudents ?? 0} / ${feedbackAnalytics?.totalStudents ?? 0}`}
               </span>
             </div>
             <div className="mb-3">
               <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-indigo-500 rounded-full transition-all"
-                  style={{ width: `${feedbackOverallValues.length ? (feedbackOverallValues.filter(value => value >= 4).length / feedbackOverallValues.length) * 100 : 0}%` }}
+                  style={{ width: `${feedbackAnalytics?.submissionPercentage ?? 0}%` }}
                 />
               </div>
               <div className="text-xs text-slate-400 mt-1">
-                {feedbackHighRating} of recorded ratings are 4 or above
+                {feedbackAnalyticsLoading ? 'Loading submission progress...' : `${feedbackAnalytics?.submittedStudents ?? 0} of ${feedbackAnalytics?.totalStudents ?? 0} students submitted feedback`}
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 max-h-52 overflow-y-auto">
-              {feedbackRecords.length ? <div className="text-sm text-slate-600">Feedback records are linked to event ID <strong>{event.id}</strong> and are used by the Final Report and AI Analysis.</div> : <div className="text-sm text-slate-500">No feedback responses were recorded for this event.</div>}
+              {!feedbackRecords.length && !feedbackAnalytics?.totalResponses && <div className="text-sm text-slate-500">No feedback responses were recorded for this event.</div>}
             </div>
           </div>
 
@@ -2174,14 +2248,14 @@ Attendance: ${event.attendance}%</p>
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
               <h3 className="font-bold font-heading text-slate-800 mb-4">Feedback Summary</h3>
               <div className="text-center mb-5">
-                <div className="text-5xl font-bold font-heading text-indigo-600">{feedbackAverage(feedbackRecords, 'overallRating', 'overall', 'rating', 'overallScore')}</div>
+                <div className="text-5xl font-bold font-heading text-indigo-600">{feedbackAnalytics?.averageRating == null ? 'Not Available' : `${feedbackAnalytics.averageRating.toFixed(2)}/5`}</div>
                 <div className="text-slate-400 text-sm mt-1">Average Rating / 5</div>
                 <div className="flex justify-center gap-0.5 mt-2">
                   {[1,2,3,4,5].map(i => (
                     <span key={i} className={`text-xl ${feedbackOverallValues.length && i <= Math.round(feedbackOverallValues.reduce((sum, value) => sum + value, 0) / feedbackOverallValues.length) ? 'text-amber-400' : 'text-slate-200'}`}>★</span>
                   ))}
                 </div>
-                <div className="text-xs text-slate-400 mt-1">{feedbackRecords.length} total responses</div>
+                <div className="text-xs text-slate-400 mt-1">{feedbackAnalyticsLoading ? 'Loading responses...' : `${feedbackAnalytics?.totalResponses ?? feedbackRecords.length} total responses`}</div>
               </div>
               <div className="space-y-2">
                 {feedbackDistribution.map(f => (
@@ -2200,17 +2274,16 @@ Attendance: ${event.attendance}%</p>
             <div className="lg:col-span-2 space-y-4">
               <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
                 <h3 className="font-bold font-heading text-slate-800 mb-4">Question-wise Analysis</h3>
-                {feedbackQuestions.map(q => (
-                  <div key={q.q} className="mb-3">
+                {feedbackAnalytics?.questionAnalysis?.length ? feedbackAnalytics.questionAnalysis.map(q => (
+                  <div key={q.id} className="mb-4">
                     <div className="flex justify-between text-sm mb-1">
-                      <span className="text-slate-600">{q.q}</span>
-                      <span className="font-semibold text-slate-800">{q.average}</span>
+                      <span className="text-slate-600">{q.text}</span>
+                      <span className="font-semibold text-slate-800">{q.type === 'rating' && q.average != null ? `${q.average.toFixed(2)}/5` : q.type === 'text' ? `${q.comments?.length || 0} responses` : 'Responses'}</span>
                     </div>
-                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${q.average === 'Not Available' ? 0 : Number(q.average.split('/')[0]) * 20}%` }} />
-                    </div>
+                    {q.type === 'rating' && <div className="h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 rounded-full" style={{ width: `${q.average == null ? 0 : q.average * 20}%` }} /></div>}
+                    {q.distribution && <div className="flex flex-wrap gap-2 mt-2">{Object.entries(q.distribution).map(([option, count]) => <span key={option} className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-600">{option}: {count}</span>)}</div>}
                   </div>
-                ))}
+                )) : <p className="text-sm text-slate-500">{feedbackAnalyticsLoading ? 'Loading analysis...' : 'No published feedback form or responses are available.'}</p>}
               </div>
 
               <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
@@ -2237,12 +2310,13 @@ Attendance: ${event.attendance}%</p>
           <div className="flex items-center justify-between">
             <h3 className="font-bold font-heading text-slate-800">Post-Event Documentation</h3>
             <button
-              onClick={() => setShowOtherDocModal(true)}
+              onClick={() => navigate('documentation', eventId)}
               className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium"
             >
               + Add Other Document
             </button>
           </div>
+          {documentError && <p className="text-sm text-red-600">{documentError}</p>}
 
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
             <table className="w-full text-sm">
@@ -2254,39 +2328,48 @@ Attendance: ${event.attendance}%</p>
                 </tr>
               </thead>
               <tbody>
-                {documents.map((doc, i) => (
-                  <tr key={doc.name} className="border-b border-slate-50 hover:bg-slate-50">
+                {documentCategories.map((doc, i) => {
+                  const uploaded = eventDocuments.find(item => item.category === doc.category);
+                  return (
+                  <tr key={doc.category} className="border-b border-slate-50 hover:bg-slate-50">
                     <td className="px-4 py-3 text-slate-400 text-xs">{i + 1}</td>
                     <td className="px-4 py-3 font-medium text-slate-800">{doc.name}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${docStatusColors[doc.status]}`}>{doc.status}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${docStatusColors[uploaded?.status || 'Pending'] || docStatusColors.Pending}`}>{uploaded?.status || 'Pending'}</span>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
-                        {doc.file ? (
+                        {uploaded ? (
                           <>
-                            <button className="text-xs text-blue-600 hover:text-blue-800 border border-blue-200 px-2 py-1 rounded-lg hover:bg-blue-50">View</button>
-                            <button className="text-xs text-green-600 hover:text-green-800 border border-green-200 px-2 py-1 rounded-lg hover:bg-green-50">Download</button>
+                            <button onClick={() => openEventDocument(uploaded)} className="text-xs text-blue-600 hover:text-blue-800 border border-blue-200 px-2 py-1 rounded-lg hover:bg-blue-50">View</button>
+                            <button onClick={() => downloadEventDocument(uploaded)} className="text-xs text-green-600 hover:text-green-800 border border-green-200 px-2 py-1 rounded-lg hover:bg-green-50">Download</button>
                             <button
-                              onClick={() => { setUploadDocName(doc.name); setShowUploadModal(true); }}
+                              onClick={() => beginDocumentUpload(doc.category, uploaded.name, uploaded.id)}
                               className="text-xs text-amber-600 hover:text-amber-800 border border-amber-200 px-2 py-1 rounded-lg hover:bg-amber-50"
                             >
                               Replace
                             </button>
+                            <button onClick={() => deleteEventDocumentRecord(uploaded)} className="text-xs text-red-500 hover:text-red-700 border border-red-200 px-2 py-1 rounded-lg hover:bg-red-50">Delete</button>
                           </>
                         ) : (
                           <button
-                            onClick={() => { setUploadDocName(doc.name); setShowUploadModal(true); }}
+                            onClick={() => beginDocumentUpload(doc.category, doc.name)}
                             className="text-xs text-indigo-600 hover:text-indigo-800 border border-indigo-200 px-2 py-1 rounded-lg hover:bg-indigo-50"
                           >
                             Upload Now
                           </button>
                         )}
-                        {doc.status !== 'Pending' && (
-                          <button className="text-xs text-red-500 hover:text-red-700 border border-red-200 px-2 py-1 rounded-lg hover:bg-red-50">Delete</button>
-                        )}
                       </div>
                     </td>
+                  </tr>
+                  );
+                })}
+                {eventDocuments.filter(document => !documentCategories.some(item => item.category === document.category)).map((document, i) => (
+                  <tr key={document.id} className="border-b border-slate-50 hover:bg-slate-50">
+                    <td className="px-4 py-3 text-slate-400 text-xs">{documentCategories.length + i + 1}</td>
+                    <td className="px-4 py-3 font-medium text-slate-800">{document.name}</td>
+                    <td className="px-4 py-3"><span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">{document.status || 'Uploaded'}</span></td>
+                    <td className="px-4 py-3"><div className="flex gap-2"><button onClick={() => openEventDocument(document)} className="text-xs text-blue-600 border border-blue-200 px-2 py-1 rounded-lg">View</button><button onClick={() => downloadEventDocument(document)} className="text-xs text-green-600 border border-green-200 px-2 py-1 rounded-lg">Download</button><button onClick={() => deleteEventDocumentRecord(document)} className="text-xs text-red-500 border border-red-200 px-2 py-1 rounded-lg">Delete</button></div></td>
                   </tr>
                 ))}
               </tbody>
@@ -2463,7 +2546,8 @@ Attendance: ${event.attendance}%</p>
                 <div className="space-y-2">
                   {docOrder.map((docIdx, position) => {
                     const doc = documents[docIdx];
-                    const hasFile = (uploadedFiles[doc.name] || []).length > 0;
+                    const matchingDocuments = eventDocuments.filter(document => document.category === documentCategoryForDisplay(doc.name));
+                    const hasFile = matchingDocuments.length > 0;
                     return (
                       <div
                         key={docIdx}
@@ -2487,8 +2571,9 @@ Attendance: ${event.attendance}%</p>
                           {position + 1}
                         </span>
                         <span className={`flex-1 text-sm font-medium ${hasFile ? 'text-slate-800' : 'text-slate-400'}`}>{doc.name}</span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${docStatusColors[doc.status]}`}>{doc.status}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${docStatusColors[matchingDocuments[0]?.status || 'Pending'] || docStatusColors.Pending}`}>{matchingDocuments[0]?.status || 'Pending'}</span>
                         {!hasFile && <span className="text-xs text-slate-400 italic">Not uploaded — will be skipped</span>}
+                        {matchingDocuments.length > 1 && <span className="text-xs text-slate-400">{matchingDocuments.length} files</span>}
                         <div className="flex gap-1">
                           <button
                             onClick={() => {
@@ -2550,19 +2635,18 @@ Attendance: ${event.attendance}%</p>
                 {mergedReportGenerated && (
                   <>
                     <button onClick={handleDownloadMergedReport} className="px-4 py-2 border border-green-200 text-green-600 rounded-xl text-sm font-medium hover:bg-green-50">📥 Download Merged Report</button>
-                    <button className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl text-sm font-medium hover:bg-slate-50">🖨️ Print</button>
                   </>
                 )}
               </div>
 
               <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-                <h3 className="font-bold font-heading text-slate-800 mb-4">Merge Order Confirmed</h3>
+                <h3 className="font-bold font-heading text-slate-800 mb-4">Merged Documents</h3>
                 <div className="space-y-2 mb-5">
-                  {docOrder.filter(i => (uploadedFiles[documents[i].name] || []).length > 0).map((docIdx, pos) => (
+                  {docOrder.filter(i => eventDocuments.some(document => document.category === documentCategoryForDisplay(documents[i].name))).map((docIdx, pos) => (
                     <div key={docIdx} className="flex items-center gap-3 px-3 py-2 bg-slate-50 rounded-lg">
                       <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center">{pos + 1}</span>
                       <span className="text-sm text-slate-800 font-medium">{documents[docIdx].name}</span>
-                      <span className="text-xs text-slate-400 ml-auto">{(uploadedFiles[documents[docIdx].name] || []).map(file => file.name).join(', ')}</span>
+                      <span className="text-xs text-slate-400 ml-auto">{eventDocuments.filter(document => document.category === documentCategoryForDisplay(documents[docIdx].name)).map(document => document.name).join(', ')}</span>
                     </div>
                   ))}
                 </div>
@@ -2601,8 +2685,8 @@ Attendance: ${event.attendance}%</p>
               </div>
               <div>
                 <label className="text-xs text-slate-500 mb-1 block">Document Type</label>
-                <select className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
-                  {['Circular', 'Permission Letter', 'Attendance', 'Feedback', 'Report', 'Other'].map(t => <option key={t}>{t}</option>)}
+                <select value={uploadCategory} onChange={e => setUploadCategory(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+                  {documentCategories.map(item => <option key={item.category} value={item.category}>{item.name}</option>)}
                 </select>
               </div>
               <div>
@@ -2620,10 +2704,17 @@ Attendance: ${event.attendance}%</p>
               <div className="flex gap-3">
                 <button onClick={() => setShowUploadModal(false)} className="flex-1 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
                 <button
-                  onClick={() => {
-                    if (uploadFiles.length > 0) setUploadedFiles(previous => ({ ...previous, [uploadDocName]: uploadFiles }));
-                    setUploadFiles([]);
-                    setShowUploadModal(false);
+                  onClick={async () => {
+                    const file = uploadFiles[0];
+                    if (!file) { setDocumentError('Select a file before uploading.'); return; }
+                    try {
+                      if (replaceDocumentId) await replaceEventDocument(replaceDocumentId, file, uploadDocName);
+                      else await uploadEventDocument(eventId, file, uploadCategory, uploadDocName || file.name);
+                      await refreshEventDocuments();
+                      setUploadFiles([]);
+                      setReplaceDocumentId(null);
+                      setShowUploadModal(false);
+                    } catch { setDocumentError('Unable to save this document. Please try again.'); }
                   }}
                   className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium"
                 >Upload Documents</button>
