@@ -5,6 +5,20 @@ const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const getToken = () => localStorage.getItem('token') || sessionStorage.getItem('token');
 
+export interface StudentEventRecord extends EventRecord {}
+export interface FeedbackQuestion { id: string; text: string; type: 'rating' | 'multiple-choice' | 'yes-no' | 'text' | 'dropdown'; options?: string[]; required?: boolean; }
+export interface StudentFeedbackForm { _id: string; eventId: string; title: string; status: string; questions: FeedbackQuestion[]; }
+export interface FeedbackAnalytics {
+  totalResponses: number;
+  totalStudents: number;
+  submittedStudents: number;
+  submissionPercentage: number;
+  averageRating: number | null;
+  ratingDistribution: Record<string, number>;
+  questionAnalysis: Array<{ id: string; text: string; type: string; average?: number | null; distribution?: Record<string, number>; comments?: Array<{ question: string; answer: string }> }>;
+  comments: Array<{ question: string; answer: string }>;
+}
+
 export interface EventFeedbackRecord {
   id?: string;
   _id?: string;
@@ -26,6 +40,42 @@ export async function getEventFeedback(eventId: string) {
     { headers: { Authorization: `Bearer ${getToken()}` } }
   );
   return response.data.data || [];
+}
+
+export async function getFeedbackForm(eventId: string) {
+  const response = await axios.get<{ success: boolean; data: StudentFeedbackForm | null }>(`${apiUrl}/api/feedback/event/${encodeURIComponent(eventId)}/form`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  return response.data.data;
+}
+
+export async function getFeedbackAnalytics(eventId: string) {
+  const response = await axios.get<{ success: boolean; data: FeedbackAnalytics }>(`${apiUrl}/api/feedback/event/${encodeURIComponent(eventId)}/analytics`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  return response.data.data;
+}
+
+export async function getStudentEvents() {
+  const response = await axios.get<{ success: boolean; data: StudentEventRecord[]; studentName?: string }>(`${apiUrl}/api/student/events`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  return { events: response.data.data || [], studentName: response.data.studentName || '' };
+}
+
+
+export async function getStudentEvent(eventId: string) {
+  const response = await axios.get<{ success: boolean; data: StudentEventRecord }>(`${apiUrl}/api/student/events/${encodeURIComponent(eventId)}`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  return response.data.data;
+}
+
+export async function getStudentFeedback(eventId: string) {
+  const response = await axios.get<{ success: boolean; data: { form: StudentFeedbackForm | null; status?: string | null; submitted: boolean; submittedAt?: string } }>(`${apiUrl}/api/student/events/${encodeURIComponent(eventId)}/feedback`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  return response.data.data;
+}
+
+export async function submitStudentFeedback(eventId: string, feedbackFormId: string, answers: Record<string, unknown>) {
+  const response = await axios.post<{ success: boolean; data: { submitted: boolean; submittedAt: string } }>(`${apiUrl}/api/student/events/${encodeURIComponent(eventId)}/feedback`, { feedbackFormId, answers }, { headers: { Authorization: `Bearer ${getToken()}` } });
+  return response.data.data;
+}
+
+export async function saveFeedbackForm(eventId: string, form: { title: string; status: 'Draft' | 'Published' | 'Closed'; questions: FeedbackQuestion[] }) {
+  const response = await axios.put<{ success: boolean; data: StudentFeedbackForm }>(`${apiUrl}/api/student/events/${encodeURIComponent(eventId)}/feedback-form`, form, { headers: { Authorization: `Bearer ${getToken()}` } });
+  return response.data.data;
 }
 
 export interface EventAttendanceSummary {
@@ -89,6 +139,17 @@ export async function uploadEventDocument(eventId: string, file: File, category:
   return response.data.data;
 }
 
+export async function replaceEventDocument(documentId: string, file: File, documentName: string, onProgress?: (value: number) => void) {
+  const body = new FormData();
+  body.append('file', file);
+  body.append('documentName', documentName);
+  const response = await axios.put<{ success: boolean; data: EventDocumentRecord }>(
+    `${apiUrl}/api/event-documents/${encodeURIComponent(documentId)}`, body,
+    { headers: { Authorization: `Bearer ${getToken()}` }, onUploadProgress: progress => onProgress?.(progress.total ? Math.round((progress.loaded / progress.total) * 100) : 0) }
+  );
+  return response.data.data;
+}
+
 export async function deleteEventDocument(documentId: string) {
   await axios.delete(`${apiUrl}/api/event-documents/${encodeURIComponent(documentId)}`, { headers: { Authorization: `Bearer ${getToken()}` } });
 }
@@ -100,6 +161,15 @@ export async function getEventDocumentBytes(url: string) {
     headers: { Authorization: `Bearer ${getToken()}` }
   });
   return response.data;
+}
+
+export async function generateMergedEventReport(eventId: string, documentIds: string[]) {
+  const response = await axios.post<ArrayBuffer>(
+    `${apiUrl}/api/event-documents/merged/event/${encodeURIComponent(eventId)}`,
+    { documentIds },
+    { responseType: 'arraybuffer', headers: { Authorization: `Bearer ${getToken()}` } }
+  );
+  return { bytes: response.data, contentDisposition: response.headers['content-disposition'] as string | undefined };
 }
 
 export async function getDashboardSummary(academicYear?: string, department = 'ALL') {

@@ -24,6 +24,8 @@ const isStrongPassword = (value: string) =>
 
 export default function Login({ onLogin }: LoginProps) {
   const [isSignup, setIsSignup] = useState(false);
+  const [studentMode, setStudentMode] = useState(false);
+  const [registerNumber, setRegisterNumber] = useState('');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -86,6 +88,25 @@ export default function Login({ onLogin }: LoginProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleStudentLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    if (!registerNumber.trim()) { setError('Please enter your register number'); return; }
+    setLoading(true);
+    try {
+      const response = await axios.post(`${apiUrl}/api/student/login`, { registerNumber });
+      const { token, student } = response.data;
+      const user = { id: `student-${student.registerNumber}`, name: student.registerNumber, email: '', department: '', role: 'student' as const, active: true, registerNumber: student.registerNumber };
+      const storage = remember ? localStorage : sessionStorage;
+      storage.setItem('token', token);
+      storage.setItem('user', JSON.stringify(user));
+      onLogin(user, token, remember);
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'You are not part of any events.');
+    } finally { setLoading(false); }
   };
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -267,6 +288,17 @@ export default function Login({ onLogin }: LoginProps) {
     setEmail('');
     setPassword('');
     setConfirmPassword('');
+  };
+
+  const switchStudentMode = () => {
+    setStudentMode(value => !value);
+    setIsSignup(false);
+    setResetStep(null);
+    setError('');
+    setSuccess('');
+    setRegisterNumber('');
+    setEmail('');
+    setPassword('');
   };
 
   return (
@@ -457,6 +489,8 @@ export default function Login({ onLogin }: LoginProps) {
                   : resetStep === 'otp'
                   ? 'Enter verification code'
                   : 'Create a new password'
+                : studentMode
+                ? 'Student Login'
                 : isSignup
                 ? 'Create your account'
                 : 'Welcome back'}
@@ -469,6 +503,8 @@ export default function Login({ onLogin }: LoginProps) {
                   : resetStep === 'otp'
                   ? `Enter the 6-digit code sent to ${email}`
                   : 'Choose a new password for your account'
+                : studentMode
+                ? 'Enter your register number to view your events'
                 : isSignup
                 ? 'Register for your Academic Event Hub account'
                 : 'Sign in to your Academic Event Hub account'}
@@ -560,6 +596,17 @@ export default function Login({ onLogin }: LoginProps) {
               <button type="submit" disabled={loading} className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold rounded-xl shadow-lg shadow-indigo-200 transition-all duration-200">
                 {loading ? 'Resetting Password...' : 'Reset Password'}
               </button>
+            </form>
+          ) : studentMode ? (
+            <form onSubmit={handleStudentLogin} className="space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Register Number</label>
+                <input type="text" value={registerNumber} onChange={e => setRegisterNumber(e.target.value)} placeholder="Enter your register number" autoFocus className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50 text-gray-900 placeholder-gray-400" />
+              </div>
+              <button type="submit" disabled={loading} className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold rounded-xl shadow-lg shadow-indigo-200 transition-all duration-200">
+                {loading ? 'Checking attendance...' : 'Student Login'}
+              </button>
+              <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} className="w-4 h-4 text-indigo-600 rounded border-gray-300" /><span className="text-sm text-gray-600">Remember me</span></label>
             </form>
           ) : !isSignup ? (
 
@@ -820,20 +867,22 @@ export default function Login({ onLogin }: LoginProps) {
           <div className="mt-6 text-center">
 
             <span className="text-sm text-gray-500">
-              {isSignup
+              {studentMode ? 'Staff login?' : isSignup
                 ? 'Already have an account?'
                 : "Don't have an account?"}
             </span>
 
             <button
               type="button"
-              onClick={switchMode}
+              onClick={studentMode ? switchStudentMode : switchMode}
               className="ml-2 text-sm text-indigo-600 hover:text-indigo-700 font-semibold"
             >
-              {isSignup
+              {studentMode ? 'Staff Sign In' : isSignup
                 ? 'Sign In'
                 : 'Sign Up'}
             </button>
+
+            {!studentMode && <button type="button" onClick={switchStudentMode} className="block mx-auto mt-4 text-sm text-indigo-600 hover:text-indigo-700 font-semibold">Student Login</button>}
 
           </div>
           )}

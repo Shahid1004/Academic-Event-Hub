@@ -323,9 +323,9 @@ export const eventTypes = [
 ];
 
 export const notifications = [
-  { id: 1, text: 'Attendance pending for Web Development Workshop', time: '2h ago', type: 'warning', eventId: 'EVT-003' },
-  { id: 2, text: 'Feedback collection completed for Generative AI Seminar', time: '5h ago', type: 'success', eventId: 'EVT-004' },
-  { id: 3, text: 'Payment document pending for AI Hackathon 2025', time: '1d ago', type: 'warning', eventId: 'EVT-007' },
-  { id: 4, text: 'Event report generated for Data Science FDP', time: '2d ago', type: 'success', eventId: 'EVT-006' },
-  { id: 5, text: 'Documentation completed for Structured Error Management', time: '3d ago', type: 'info', eventId: 'EVT-001' },
+  { id: 1, text: 'Attendance pending for Web Development Workshop', time: '2h ago', type: 'warning', preferenceKey: 'attendancePending', eventId: 'EVT-003' },
+  { id: 2, text: 'Feedback collection completed for Generative AI Seminar', time: '5h ago', type: 'success', preferenceKey: 'feedbackCompleted', eventId: 'EVT-004' },
+  { id: 3, text: 'Payment document pending for AI Hackathon 2025', time: '1d ago', type: 'warning', preferenceKey: 'paymentPending', eventId: 'EVT-007' },
+  { id: 4, text: 'Event report generated for Data Science FDP', time: '2d ago', type: 'success', preferenceKey: 'reportGenerated', eventId: 'EVT-006' },
+  { id: 5, text: 'Documentation completed for Structured Error Management', time: '3d ago', type: 'info', preferenceKey: 'documentationCompleted', eventId: 'EVT-001' },
 ];
