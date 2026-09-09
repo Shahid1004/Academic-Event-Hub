@@ -145,6 +145,17 @@ const createEvent = async (req, res) => {
       assignedFaculty,
       targetYears
     });
+
+    try {
+      const { ensureDefaultStudentsSeeded } = require("./attendanceController");
+      await ensureDefaultStudentsSeeded(event.id);
+      if (event._id) {
+        await ensureDefaultStudentsSeeded(event._id.toString());
+      }
+    } catch (err) {
+      console.warn("Auto attendance seeding failed:", err.message);
+    }
+
     return res.status(201).json({ success: true, data: event });
   } catch (error) {
     console.error("Event creation failed:", error.message);
@@ -152,4 +163,103 @@ const createEvent = async (req, res) => {
   }
 };
 
-module.exports = { listEvents, listCalendarEvents, createEvent };
+const fs = require("fs");
+const path = require("path");
+const EventDocument = require("../models/EventDocument");
+const Attendance = require("../models/Attendance");
+const Feedback = require("../models/Feedback");
+const FeedbackForm = require("../models/FeedbackForm");
+
+const deleteEvent = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Event ID is required" });
+    }
+
+    let event = null;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      event = await Event.findById(id);
+    }
+    if (!event) {
+      event = await Event.findOne({ id: id });
+    }
+    if (!event) {
+      return res.status(404).json({ success: false, message: "Event not found" });
+    }
+
+    const publicId = event.id;
+    const mongoId = event._id.toString();
+    const eventIds = [...new Set([publicId, mongoId].filter(Boolean))];
+
+    // 1. Delete associated event documents and files on disk
+    const eventDocs = await EventDocument.find({ eventId: { $in: eventIds } });
+    for (const doc of eventDocs) {
+      if (doc.storagePath) {
+        const fullPath = path.isAbsolute(doc.storagePath)
+          ? doc.storagePath
+          : path.join(__dirname, "..", doc.storagePath);
+        try {
+          if (fs.existsSync(fullPath)) {
+            await fs.promises.unlink(fullPath);
+          }
+        } catch (err) {
+          console.warn(`Failed to delete document file ${fullPath}:`, err.message);
+        }
+      }
+    }
+    await EventDocument.deleteMany({ eventId: { $in: eventIds } });
+
+    // 2. Delete attendance records
+    await Attendance.deleteMany({ $or: [{ eventId: { $in: eventIds } }, { event: { $in: eventIds } }] });
+
+    // 3. Delete feedback records and forms
+    await Feedback.deleteMany({ eventId: { $in: eventIds } });
+    await FeedbackForm.deleteMany({ eventId: { $in: eventIds } });
+
+    // 4. Delete main Event database record
+    await Event.deleteOne({ _id: event._id });
+
+    return res.json({
+      success: true,
+      message: "Event and all associated data deleted successfully, including database records and documents."
+    });
+  } catch (error) {
+    console.error("Event deletion failed:", error.message);
+    return res.status(500).json({ success: false, message: "Failed to delete event and associated data" });
+  }
+};
+
+const getEventById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Event ID is required" });
+    }
+
+    let event = null;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      event = await Event.findById(id).populate("assignedFaculty", "name email department designation").lean();
+    }
+    if (!event) {
+      event = await Event.findOne({ id }).populate("assignedFaculty", "name email department designation").lean();
+    }
+    if (!event) {
+      return res.status(404).json({ success: false, message: "Event not found" });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        ...event,
+        date: event.date ? event.date.toISOString().slice(0, 10) : "",
+        dateTo: event.dateTo ? event.dateTo.toISOString().slice(0, 10) : event.date ? event.date.toISOString().slice(0, 10) : "",
+      }
+    });
+  } catch (error) {
+    console.error("Get event failed:", error.message);
+    return res.status(500).json({ success: false, message: "Failed to fetch event" });
+  }
+};
+
+module.exports = { listEvents, listCalendarEvents, createEvent, deleteEvent, getEventById };

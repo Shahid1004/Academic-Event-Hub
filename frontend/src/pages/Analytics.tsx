@@ -11,15 +11,19 @@ interface AnalyticsProps { academicYear?: string; }
 
 export default function Analytics({ academicYear = '' }: AnalyticsProps) {
   const [dept, setDept] = useState<'ALL' | 'IT' | 'AIDS' | 'BOTH'>('ALL');
-  const [year, setYear] = useState(academicYear || '2025-26');
+  const [year, setYear] = useState(academicYear || 'ALL');
   const [eventsData, setEventsData] = useState<EventRecord[]>([]);
 
   useEffect(() => {
-    getEvents({ academicYear: academicYear || undefined }).then(setEventsData).catch(() => setEventsData([]));
-    setYear(academicYear || '2025-26');
-  }, [academicYear]);
+    getEvents({ academicYear: year === 'ALL' ? undefined : year }).then(setEventsData).catch(() => setEventsData([]));
+  }, [year]);
 
   const events = dept === 'ALL' ? eventsData : eventsData.filter(e => e.department === dept || (dept !== 'BOTH' && e.department === 'BOTH'));
+
+  const itEventsWithAtt = eventsData.filter(e => e.department === 'IT' && e.attendance > 0);
+  const aidsEventsWithAtt = eventsData.filter(e => e.department === 'AIDS' && e.attendance > 0);
+  const itAvgAtt = itEventsWithAtt.length ? Math.round(itEventsWithAtt.reduce((a, e) => a + e.attendance, 0) / itEventsWithAtt.length) : 0;
+  const aidsAvgAtt = aidsEventsWithAtt.length ? Math.round(aidsEventsWithAtt.reduce((a, e) => a + e.attendance, 0) / aidsEventsWithAtt.length) : 0;
 
   const monthlyData = months.map(m => ({
     month: m,
@@ -74,7 +78,7 @@ export default function Analytics({ academicYear = '' }: AnalyticsProps) {
             <button key={d} onClick={() => setDept(d)} className={`px-3 py-2 rounded-xl text-sm font-medium border ${dept === d ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}>{d}</button>
           ))}
           <select value={year} onChange={e => setYear(e.target.value)} className="px-3 py-2 border border-slate-200 rounded-xl text-sm bg-white text-slate-700">
-            {['2023-24', '2024-25', '2025-26', '2026-27'].map(y => <option key={y}>{y}</option>)}
+            {['ALL', '2023-24', '2024-25', '2025-26', '2026-27'].map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
       </div>
@@ -198,7 +202,7 @@ export default function Analytics({ academicYear = '' }: AnalyticsProps) {
             {[
               { label: 'Events', it: eventsData.filter(e => e.department === 'IT').length, aids: eventsData.filter(e => e.department === 'AIDS').length },
               { label: 'Participants', it: eventsData.filter(e => e.department === 'IT').reduce((a,e) => a+e.actualParticipants, 0), aids: eventsData.filter(e => e.department === 'AIDS').reduce((a,e) => a+e.actualParticipants, 0) },
-              { label: 'Avg Attendance', it: 91, aids: 92 },
+              { label: 'Avg Attendance %', it: itAvgAtt, aids: aidsAvgAtt },
             ].map(row => (
               <div key={row.label}>
                 <div className="flex justify-between text-xs text-slate-500 mb-1">

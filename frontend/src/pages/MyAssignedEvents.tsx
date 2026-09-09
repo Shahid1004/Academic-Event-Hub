@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { EventRecord, Page, UserProfile } from '../types';
-import { getEvents } from '../services/api';
+import { deleteEvent, getEvents } from '../services/api';
 import { eventTypeColors } from './Dashboard';
 
 interface MyAssignedEventsProps {
@@ -21,6 +21,20 @@ const statusColors: Record<string, string> = {
 export default function MyAssignedEvents({ navigate, profile }: MyAssignedEventsProps) {
   const [events, setEvents] = useState<EventRecord[]>([]);
   useEffect(() => { getEvents().then(setEvents).catch(() => setEvents([])); }, []);
+
+  const handleDelete = async (e: React.MouseEvent, eventId: string, eventName: string) => {
+    e.stopPropagation();
+    const confirmMsg = `Are you sure you want to delete "${eventName}"?\n\nWARNING: All event-related data will be permanently deleted including in the database (uploaded documents, attendance records, feedback forms, etc.).`;
+    if (window.confirm(confirmMsg)) {
+      try {
+        await deleteEvent(eventId);
+        alert(`Event "${eventName}" and all related data have been permanently deleted including in the database.`);
+        setEvents(prev => prev.filter(ev => ev.id !== eventId));
+      } catch (err: any) {
+        alert(`Failed to delete event: ${err.response?.data?.message || err.message}`);
+      }
+    }
+  };
   const assignedEvents = events.filter(event =>
     event.assignedFaculty?.some(assigned => typeof assigned === 'string' ? assigned === profile.id : assigned.id === profile.id) ||
     event.coordinator.toLowerCase().includes(profile.name.toLowerCase())
@@ -69,12 +83,20 @@ export default function MyAssignedEvents({ navigate, profile }: MyAssignedEvents
                 <div className="flex flex-col gap-2 sm:items-end">
                   <div className="text-sm text-slate-600">{event.actualParticipants > 0 ? `${event.actualParticipants} participants` : 'Not held yet'}</div>
                   {event.attendance > 0 && <div className="text-sm text-slate-600">{event.attendance}% attendance</div>}
-                  <button
-                    onClick={() => navigate('event-details', event.id)}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl"
-                  >
-                    View Details →
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => navigate('event-details', event.id)}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl"
+                    >
+                      View Details →
+                    </button>
+                    <button
+                      onClick={(e) => void handleDelete(e, event.id, event.name)}
+                      className="px-3 py-2 border border-red-200 text-red-600 hover:bg-red-50 text-sm font-medium rounded-xl"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

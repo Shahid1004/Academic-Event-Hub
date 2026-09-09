@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react';
 import * as XLSX from 'xlsx';
 import type { AttendanceStatus, EventRecord, Page, StudentAttendanceRecord } from '../types';
 import { eventTypeColors } from './Dashboard';
-import { addStudentToEventApi, getEventAttendanceApi, getEvents, importEventAttendanceRosterApi, saveEventAttendanceApi, scanHardCopyAttendanceApi } from '../services/api';
-import { sampleEvents } from '../data/sampleData';
+import { addStudentToEventApi, deleteEvent, getEventAttendanceApi, getEvents, importEventAttendanceRosterApi, saveEventAttendanceApi, scanHardCopyAttendanceApi } from '../services/api';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { generateFinalEventReport } from '../utils/finalEventReportGenerator';
 import { deleteEventDocument, generateMergedEventReport, getEventAttendance, getEventDocumentBytes, getEventDocuments, getEventFeedback, getFeedbackAnalytics, getFeedbackForm, replaceEventDocument, saveFeedbackForm, uploadEventDocument, generateAIFinalReport, type AIReportContent, type AIReportResponse, type EventAttendanceSummary, type EventDocumentRecord, type EventFeedbackRecord, type FeedbackAnalytics, type FeedbackQuestion, type StudentFeedbackForm } from '../services/api';
@@ -327,7 +326,7 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
   const [loadedEvent, setLoadedEvent] = useState<EventRecord | null>(null);
   const [eventLoading, setEventLoading] = useState(true);
   const [eventError, setEventError] = useState(false);
-  const event = loadedEvent || sampleEvents.find(e => e.id === eventId) || emptyEvent(eventId);
+  const event = loadedEvent || emptyEvent(eventId);
   useEffect(() => {
     setLoadedEvent(null);
     setEventLoading(true);
@@ -1027,16 +1026,38 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
     }
   };
 
+  const handleDeleteEvent = async () => {
+    if (!event) return;
+    const confirmMsg = `Are you sure you want to delete "${event.name}"?\n\nWARNING: All event-related data will be permanently deleted including in the database (uploaded documents, attendance records, feedback forms, etc.).`;
+    if (window.confirm(confirmMsg)) {
+      try {
+        await deleteEvent(event.id);
+        alert(`Event "${event.name}" and all related data have been permanently deleted including in the database.`);
+        navigate('all-events');
+      } catch (err: any) {
+        alert(`Failed to delete event: ${err.response?.data?.message || err.message}`);
+      }
+    }
+  };
+
   return (
     <div className="p-6 space-y-5">
       {/* Header */}
       <div>
-        <button
-          onClick={() => navigate('all-events')}
-          className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800 mb-3"
-        >
-          ← Back to Events
-        </button>
+        <div className="flex items-center justify-between mb-3">
+          <button
+            onClick={() => navigate('all-events')}
+            className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800"
+          >
+            ← Back to Events
+          </button>
+          <button
+            onClick={() => void handleDeleteEvent()}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-xl text-xs font-semibold shadow-sm transition-colors"
+          >
+            🗑️ Delete Event
+          </button>
+        </div>
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
           <div className="flex flex-col lg:flex-row lg:items-center gap-4">
             <div className="flex-1">
@@ -1294,7 +1315,7 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
                     ✓ Mark All Present
                   </button>
                   <button
-                    onClick={() => setAttendanceRecords((prev) => prev.map((s) => ({ ...s, status: 'A' })))}
+                    onClick={() => setAttendanceRecords((prev) => prev.map((s) => ({ ...s, status: '' as AttendanceStatus })))}
                     className="px-3 py-2 border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold"
                   >
                     Clear All

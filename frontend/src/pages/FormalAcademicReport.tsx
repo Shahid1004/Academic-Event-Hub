@@ -1,13 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import type { EventRecord, Page } from '../types';
+import { getEvents } from '../services/api';
 
 interface FormalAcademicReportProps {
-  events: EventRecord[];
+  events?: EventRecord[];
   navigate: (page: Page) => void;
 }
 
-type ReportType = 'month' | 'semester' | 'year';
+type ReportType = 'all' | 'month' | 'semester' | 'year';
 type SortColumn = 'name' | 'date' | 'participants';
 
 interface ReportFilters {
@@ -15,7 +16,7 @@ interface ReportFilters {
   month: number;
   year: number;
   academicYear: string;
-  semester: 'odd' | 'even';
+  semester: 'odd' | 'even' | 'all';
   department: string;
   eventType: string;
   semesterFilter: string;
@@ -29,14 +30,16 @@ const normalizeAcademicYear = (value: string) => {
   const [start, end] = value.split('-').map(Number);
   return start && end ? `${start}-${end < 100 ? 2000 + end : end}` : value;
 };
-const academicYearMatches = (event: EventRecord, selected: string) => normalizeAcademicYear(event.academicYear || '') === normalizeAcademicYear(selected);
-const semesterMatches = (event: EventRecord, selected: 'odd' | 'even') => {
+const academicYearMatches = (event: EventRecord, selected: string) => !selected || selected === 'ALL' || normalizeAcademicYear(event.academicYear || '') === normalizeAcademicYear(selected);
+const semesterMatches = (event: EventRecord, selected: 'odd' | 'even' | 'all') => {
+  if (selected === 'all') return true;
   const value = (event.semester || '').toLowerCase();
   return selected === 'odd' ? ['odd', 'i', '1', 'first'].includes(value) : ['even', 'ii', '2', 'second'].includes(value);
 };
 const formatPeriod = (filters: ReportFilters) => {
+  if (filters.type === 'all') return 'All Period';
   if (filters.type === 'month') return `${new Date(2024, filters.month - 1).toLocaleString('en', { month: 'long' })} ${filters.year}`;
-  return filters.type === 'semester' ? `${filters.academicYear} / ${filters.semester === 'odd' ? 'Odd' : 'Even'}` : filters.academicYear;
+  return filters.type === 'semester' ? `${filters.academicYear || 'All Years'} / ${filters.semester === 'odd' ? 'Odd' : 'Even'}` : (filters.academicYear || 'All Years');
 };
 
 const eventRows = (events: EventRecord[]) => events.map((event, index) => ({
@@ -63,14 +66,20 @@ const eventRows = (events: EventRecord[]) => events.map((event, index) => ({
   Status: missing(event.status),
 }));
 
-export default function FormalAcademicReport({ events, navigate }: FormalAcademicReportProps) {
+export default function FormalAcademicReport({ events: initialEvents = [], navigate }: FormalAcademicReportProps) {
+  const [events, setEvents] = useState<EventRecord[]>(initialEvents);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getEvents().then(data => { setEvents(data); }).catch(() => setEvents([])).finally(() => setLoading(false));
+  }, []);
+
   const availableYears = Array.from(new Set(events.map(event => event.academicYear).filter(Boolean))).sort();
   const availableDepartments = Array.from(new Set(events.map(event => event.department).filter(Boolean))).sort();
   const availableTypes = Array.from(new Set(events.map(event => event.type).filter(Boolean))).sort();
-  const defaultYear = availableYears[availableYears.length - 1] || '2025-26';
   const initialFilters: ReportFilters = {
-    type: 'month', month: new Date().getMonth() + 1, year: new Date().getFullYear(), academicYear: defaultYear,
-    semester: 'odd', department: 'ALL', eventType: 'ALL', semesterFilter: 'ALL', search: '', fromDate: '', toDate: '',
+    type: 'all', month: new Date().getMonth() + 1, year: new Date().getFullYear(), academicYear: 'ALL',
+    semester: 'all', department: 'ALL', eventType: 'ALL', semesterFilter: 'ALL', search: '', fromDate: '', toDate: '',
   };
   const [filters, setFilters] = useState<ReportFilters>(initialFilters);
   const [appliedFilters, setAppliedFilters] = useState<ReportFilters>(initialFilters);

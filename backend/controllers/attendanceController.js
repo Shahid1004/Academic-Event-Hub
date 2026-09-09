@@ -1298,6 +1298,7 @@ module.exports = {
   importEventAttendanceRoster,
   scanHardCopyAttendance,
   addStudentToAttendance,
+  ensureDefaultStudentsSeeded,
 };
 
 

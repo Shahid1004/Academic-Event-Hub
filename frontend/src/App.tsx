@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { AppSettings, Page, UserProfile, UserRole } from './types';
 import { getSettings, updateSettings } from './services/api';
-import { sampleEvents } from './data/sampleData';
-
 import Login from './pages/Login';
 import Layout from './components/Layout';
 
@@ -222,7 +220,6 @@ export default function App() {
       case 'reports':
         return (
           <FormalAcademicReport
-            events={sampleEvents as any}
             navigate={navigate}
           />
         );

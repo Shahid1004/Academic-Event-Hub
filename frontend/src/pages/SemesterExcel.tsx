@@ -1,4 +1,4 @@
-import { sampleEvents, academicYears, eventTypes } from '../data/sampleData';
+import { academicYears, eventTypes } from '../data/sampleData';
 import * as XLSX from 'xlsx';
 import { useEffect, useState } from 'react';
 import type { EventRecord } from '../types';
@@ -7,7 +7,7 @@ import { getEvents } from '../services/api';
 interface SemesterExcelProps { academicYear?: string; }
 
 export default function SemesterExcel({ academicYear = '' }: SemesterExcelProps) {
-  const [yearFilter, setYearFilter] = useState('2025-26');
+  const [yearFilter, setYearFilter] = useState('ALL');
   const [semFilter, setSemFilter] = useState('ALL');
   const [deptFilter, setDeptFilter] = useState('ALL');
   const [fromDate, setFromDate] = useState('');

@@ -19,9 +19,10 @@ const deptColors: Record<string, string> = {
 };
 
 export default function CalendarPage({ navigate, academicYear = '' }: CalendarPageProps) {
+  const today = new Date();
   const [view, setView] = useState<CalView>('month');
-  const [year, setYear] = useState(2025);
-  const [month, setMonth] = useState(6); // July (0-indexed)
+  const [year, setYear] = useState(today.getFullYear());
+  const [month, setMonth] = useState(today.getMonth());
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Department, EventRecord, EventType, Page } from '../types';
 import { eventTypes, academicYears } from '../data/sampleData';
 import { eventTypeColors } from './Dashboard';
-import { getEvents } from '../services/api';
+import { deleteEvent, getEvents } from '../services/api';
 import * as XLSX from 'xlsx';
 
 interface AllEventsProps {
@@ -137,6 +137,20 @@ export default function AllEvents({ navigate, filterDept, title = 'All Events', 
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Consolidated Events');
     XLSX.writeFile(workbook, `consolidated-events-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
+  const handleDelete = async (e: React.MouseEvent, eventId: string, eventName: string) => {
+    e.stopPropagation();
+    const confirmMsg = `Are you sure you want to delete "${eventName}"?\n\nWARNING: All event-related data will be permanently deleted including in the database (uploaded documents, attendance records, feedback forms, etc.).`;
+    if (window.confirm(confirmMsg)) {
+      try {
+        await deleteEvent(eventId);
+        alert(`Event "${eventName}" and all related data have been permanently deleted including in the database.`);
+        setEvents(prev => prev.filter(ev => ev.id !== eventId));
+      } catch (err: any) {
+        alert(`Failed to delete event: ${err.response?.data?.message || err.message}`);
+      }
+    }
   };
 
   return (
@@ -298,13 +312,21 @@ export default function AllEvents({ navigate, filterDept, title = 'All Events', 
                       'bg-slate-100 text-slate-600'
                     }`}>{event.reportStatus}</span>
                   </td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={() => navigate('event-details', event.id)}
-                      className="text-xs text-indigo-600 hover:text-indigo-800 font-medium border border-indigo-200 px-2 py-1 rounded-lg hover:bg-indigo-50 whitespace-nowrap"
-                    >
-                      View Event
-                    </button>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); navigate('event-details', event.id); }}
+                        className="text-xs text-indigo-600 hover:text-indigo-800 font-medium border border-indigo-200 px-2 py-1 rounded-lg hover:bg-indigo-50 whitespace-nowrap"
+                      >
+                        View Event
+                      </button>
+                      <button
+                        onClick={(e) => void handleDelete(e, event.id, event.name)}
+                        className="text-xs text-red-600 hover:text-red-800 font-medium border border-red-200 px-2 py-1 rounded-lg hover:bg-red-50 whitespace-nowrap"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

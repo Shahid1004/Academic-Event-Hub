@@ -239,6 +239,22 @@ export async function createEvent(payload: CreateEventPayload) {
   return response.data.data;
 }
 
+export async function deleteEvent(eventId: string) {
+  const response = await axios.delete<{ success: boolean; message: string }>(
+    `${apiUrl}/api/events/${encodeURIComponent(eventId)}`,
+    { headers: { Authorization: `Bearer ${getToken()}` } }
+  );
+  return response.data;
+}
+
+export async function getEventByIdApi(eventId: string) {
+  const response = await axios.get<{ success: boolean; data: EventRecord }>(
+    `${apiUrl}/api/events/${encodeURIComponent(eventId)}`,
+    { headers: { Authorization: `Bearer ${getToken()}` } }
+  );
+  return response.data.data;
+}
+
 export async function getSettings() {
   const response = await axios.get<{ settings: AppSettings; profile: UserProfile }>(
     `${apiUrl}/api/settings`,
