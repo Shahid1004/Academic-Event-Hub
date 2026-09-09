@@ -204,7 +204,7 @@ export const generateMonthwiseSummary = (events: EventRecord[]): MonthwiseSummar
 
   // Sort by date
   return Object.entries(monthData)
-    .sort((a, b) => new Date(a[0]) - new Date(b[0]))
+    .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
     .map(([month, data]) => ({
       month,
       eventCount: data.events,
@@ -317,7 +317,7 @@ export const generateKeyFindings = (
   // 2. Most active month (for reports with multiple months)
   const eventsByMonth = stats.eventsByMonth;
   if (Object.keys(eventsByMonth).length > 0) {
-    const mostActiveMonth = Object.entries(eventsByMonth).sort((a, b) => b[1] - a[1])[0];
+    const mostActiveMonth = Object.entries(eventsByMonth).sort((a, b) => (b[1] as number) - (a[1] as number))[0];
     findings.push(
       `${mostActiveMonth[0]} recorded the highest number of academic events with ${mostActiveMonth[1]} event(s).`
     );
@@ -325,7 +325,7 @@ export const generateKeyFindings = (
 
   // 3. Event type analysis
   if (stats.eventsByType && Object.keys(stats.eventsByType).length > 0) {
-    const mostCommonType = Object.entries(stats.eventsByType).sort((a, b) => b[1] - a[1])[0];
+    const mostCommonType = Object.entries(stats.eventsByType).sort((a, b) => (b[1] as number) - (a[1] as number))[0];
     findings.push(
       `${mostCommonType[0]} was the most frequently conducted event type with ${mostCommonType[1]} occurrence(s).`
     );
@@ -333,7 +333,7 @@ export const generateKeyFindings = (
 
   // 4. Most active department
   if (stats.eventsByDepartment && Object.keys(stats.eventsByDepartment).length > 0) {
-    const mostActiveDept = Object.entries(stats.eventsByDepartment).sort((a, b) => b[1] - a[1])[0];
+    const mostActiveDept = Object.entries(stats.eventsByDepartment).sort((a, b) => (b[1] as number) - (a[1] as number))[0];
     findings.push(`${mostActiveDept[0]} demonstrated the highest engagement with ${mostActiveDept[1]} event(s).`);
   }
 

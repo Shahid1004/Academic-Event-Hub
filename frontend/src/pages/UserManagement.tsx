@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 
-type UserRole = 'admin' | 'hod' | 'faculty' | 'coordinator';
+import type { UserRole } from '../types';
 
 interface User {
   id: string;

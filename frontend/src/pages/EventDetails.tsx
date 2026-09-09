@@ -2,18 +2,18 @@ import { useEffect, useState } from 'react';
 import * as XLSX from 'xlsx';
 import type { AttendanceStatus, EventRecord, Page, StudentAttendanceRecord } from '../types';
 import { eventTypeColors } from './Dashboard';
-import { getEventAttendanceApi, getEvents, importEventAttendanceRosterApi, qrCheckInApi, saveEventAttendanceApi, scanHardCopyAttendanceApi } from '../services/api';
+import { getEventAttendanceApi, getEvents, importEventAttendanceRosterApi, saveEventAttendanceApi, scanHardCopyAttendanceApi } from '../services/api';
 import { sampleEvents } from '../data/sampleData';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { generateFinalEventReport } from '../utils/finalEventReportGenerator';
-import { deleteEventDocument, generateMergedEventReport, getEventAttendance, getEventDocumentBytes, getEventDocuments, getEventFeedback, getFeedbackAnalytics, getFeedbackForm, replaceEventDocument, saveFeedbackForm, uploadEventDocument, type EventAttendanceSummary, type EventDocumentRecord, type EventFeedbackRecord, type FeedbackAnalytics, type FeedbackQuestion, type StudentFeedbackForm } from '../services/api';
+import { deleteEventDocument, generateMergedEventReport, getEventAttendance, getEventDocumentBytes, getEventDocuments, getEventFeedback, getFeedbackAnalytics, getFeedbackForm, replaceEventDocument, saveFeedbackForm, uploadEventDocument, generateAIFinalReport, type AIReportContent, type AIReportResponse, type EventAttendanceSummary, type EventDocumentRecord, type EventFeedbackRecord, type FeedbackAnalytics, type FeedbackQuestion, type StudentFeedbackForm } from '../services/api';
 
 interface EventDetailsProps {
   eventId: string;
   navigate: (page: Page, eventId?: string) => void;
 }   
 
-type Tab = 'overview' | 'attendance' | 'feedback' | 'documents' | 'ai-analysis' | 'final-report' | 'merged-report';
+type Tab = 'overview' | 'attendance' | 'feedback' | 'documents' | 'final-report' | 'merged-report';
 
 const reportValue = (value: unknown) => value === undefined || value === null || value === '' ? 'Not Available' : String(value);
 const storedReportValue = (event: EventRecord, ...keys: string[]) => {
@@ -249,13 +249,9 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
   const [savingAttendance, setSavingAttendance] = useState(false);
   const [saveToast, setSaveToast] = useState<string | null>(null);
 
-  // Attendance mode
-  const [attendanceMode, setAttendanceMode] = useState<'online' | 'qr' | 'hardcopy' | 'od_generator' | 'excel'>('online');
+  // Attendance mode — removed 'qr'
+  const [attendanceMode, setAttendanceMode] = useState<'online' | 'hardcopy' | 'od_generator' | 'excel'>('online');
   
-  // QR scanner simulator state
-  const [qrRegInput, setQrRegInput] = useState('');
-  const [qrLogs, setQrLogs] = useState<{ regNo: string; name: string; time: string; status: string }[]>([]);
-  const [qrMessage, setQrMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   // Add Student Manual Modal state
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
   const [addStudentForm, setAddStudentForm] = useState({
@@ -313,7 +309,7 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
 
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadDocName, setUploadDocName] = useState('');
-  const [uploadCategory, setUploadCategory] = useState('Supporting Documents');
+  const [uploadCategory, setUploadCategory] = useState('Event Proposal / Permission Letter');
   const [replaceDocumentId, setReplaceDocumentId] = useState<string | null>(null);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
@@ -323,6 +319,13 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportGenerated, setReportGenerated] = useState(false);
   const [reportDownloadLoading, setReportDownloadLoading] = useState(false);
+  // AI Final Report state
+  const [finalReportContent, setFinalReportContent] = useState<AIReportContent | null>(null);
+  const [finalReportData, setFinalReportData] = useState<AIReportResponse | null>(null);
+  const [finalReportLoading, setFinalReportLoading] = useState(false);
+  const [finalReportGenerated, setFinalReportGenerated] = useState(false);
+  const [finalReportError, setFinalReportError] = useState<string | null>(null);
+  const [finalReportDownloadLoading, setFinalReportDownloadLoading] = useState(false);
   const [showOtherDocModal, setShowOtherDocModal] = useState(false);
   const [docOrder, setDocOrder] = useState<number[]>(documents.map((_, i) => i));
   const [mergedReportGenerated, setMergedReportGenerated] = useState(false);
@@ -491,7 +494,6 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
     { id: 'attendance', label: 'Attendance' },
     { id: 'feedback', label: 'Feedback' },
     { id: 'documents', label: 'Documents' },
-    { id: 'ai-analysis', label: 'AI Analysis' },
     { id: 'final-report', label: 'Final Report' },
     { id: 'merged-report', label: 'Merged Report' },
   ];
@@ -748,110 +750,71 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
     setTimeout(() => setSaveToast(null), 3500);
   };
 
-  // Student QR check-in simulation
-  const handleQrCheckIn = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const cleanReg = qrRegInput.trim().toUpperCase();
-    if (!cleanReg) return;
 
-    const student = attendanceRecords.find(s => s.regNo.toUpperCase() === cleanReg);
-    
-    // Call backend API as well
-    await qrCheckInApi(eventId, cleanReg, student?.studentName);
 
-    if (student) {
-      setAttendanceRecords(prev => prev.map(s => s.regNo.toUpperCase() === cleanReg ? { ...s, status: 'P', checkInMethod: 'qr', markedAt: new Date().toLocaleTimeString() } : s));
-      setQrMessage({ text: `Success! ${student.studentName} (${cleanReg}) checked in.`, type: 'success' });
-      setQrLogs(prev => [{ regNo: cleanReg, name: student.studentName, time: new Date().toLocaleTimeString(), status: 'P' }, ...prev]);
-    } else {
-      // Add new student
-      const newRec: StudentAttendanceRecord = {
-        regNo: cleanReg,
-        studentName: `Student ${cleanReg}`,
-        className: 'III IT A',
-        status: 'P',
-        checkInMethod: 'qr',
-        markedAt: new Date().toLocaleTimeString()
-      };
-      setAttendanceRecords(prev => [...prev, newRec]);
-      setQrMessage({ text: `Checked in new student ${cleanReg}!`, type: 'success' });
-      setQrLogs(prev => [{ regNo: cleanReg, name: `Student ${cleanReg}`, time: new Date().toLocaleTimeString(), status: 'P' }, ...prev]);
-    }
-    setQrRegInput('');
-    setTimeout(() => setQrMessage(null), 3000);
-  };
 
-  const handleGenAI = async () => {
-    setAiLoading(true);
-    setAiError(null);
+  // Generate AI Final Report — displays inline, does NOT auto-download
+  const handleGenerateAIFinalReport = async () => {
+    setFinalReportLoading(true);
+    setFinalReportError(null);
+    setFinalReportGenerated(false);
+    setFinalReportContent(null);
+    setFinalReportData(null);
     try {
+      // Refresh latest data first
       const [latestFeedback, latestAttendance] = await Promise.all([
         getEventFeedback(event.id),
         getEventAttendance(event.id),
       ]);
       setFeedbackRecords(latestFeedback);
       setAttendanceSummary(latestAttendance);
-      setAiAnalysis(buildAiAnalysis(event, latestAttendance, latestFeedback));
-      setAiGenerated(true);
-    } catch (error) {
-      console.error('AI analysis data lookup failed:', error);
-      setAiError('Unable to load the selected event attendance and feedback data.');
+
+      // Call backend AI report generation
+      const reportResponse = await generateAIFinalReport(event.id, event);
+      setFinalReportData(reportResponse);
+      setFinalReportContent(reportResponse.reportContent);
+      setFinalReportGenerated(true);
+    } catch (error: any) {
+      console.error('AI Final Report generation failed:', error);
+      setFinalReportError(
+        error?.response?.data?.message || error?.message || 'Failed to generate AI report. Please try again.'
+      );
     } finally {
-      setAiLoading(false);
+      setFinalReportLoading(false);
     }
   };
-  const handleGenReport = async () => {
-    setReportLoading(true);
+
+  // Download Final Report as PDF — only triggered by explicit user action
+  const handleDownloadFinalReportPDF = async () => {
+    if (!finalReportContent) {
+      window.alert('Generate the AI report first before downloading.');
+      return;
+    }
+    setFinalReportDownloadLoading(true);
     try {
-      const latestFeedback = await getEventFeedback(event.id);
-      setFeedbackRecords(latestFeedback);
-      const pdf = await createEventReportPdf(latestFeedback);
-      await downloadPdf(pdf, `${event.id || 'event'}-final-report.pdf`);
-      setReportGenerated(true);
+      const latestFeedback = feedbackRecords.length > 0 ? feedbackRecords : await getEventFeedback(event.id).catch(() => []);
+      const pdf = await generateFinalEventReport(event, latestFeedback, finalReportContent);
+      const bytes = await pdf.save();
+      const blob = new Blob([bytes as BlobPart], { type: 'application/pdf' });
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = `${event.id || 'event'}-${new Date().toISOString().split('T')[0]}-final-report.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        if (document.body.contains(link)) document.body.removeChild(link);
+        URL.revokeObjectURL(objectUrl);
+      }, 500);
     } catch (error) {
-      console.error('Final report generation failed:', error);
-      window.alert('Failed to generate the final report. Please try again.');
+      console.error('PDF download failed:', error);
+      window.alert('Failed to download PDF. Please try again.');
     } finally {
-      setReportLoading(false);
+      setFinalReportDownloadLoading(false);
     }
   };
 
-  const getReportHtml = () => `<!doctype html>
-<html><head><meta charset="utf-8"><title>${event.name} - Event Report</title>
-<style>body{font-family:Arial,sans-serif;max-width:850px;margin:40px auto;color:#1e293b;line-height:1.6}h1{text-align:center;color:#3730a3}h2{border-bottom:1px solid #cbd5e1;padding-bottom:6px}p{white-space:pre-line}.meta{text-align:center;color:#64748b;border-bottom:2px solid #3730a3;padding-bottom:20px}</style>
-</head><body><h1>XYZ COLLEGE OF ENGINEERING AND TECHNOLOGY</h1>
-<div class="meta">Department of ${event.department === 'IT' ? 'Information Technology' : event.department === 'AIDS' ? 'Artificial Intelligence and Data Science' : 'IT & AIDS'}<br>
-<strong>EVENT REPORT - ${event.type.toUpperCase()}</strong><br>${event.name}<br>${event.date} | ${event.startTime}-${event.endTime} | ${event.venue}</div>
-<h2>1. Event Overview</h2><p>A ${event.type} titled "${event.name}" was organized by the ${event.department} department on ${event.date} at ${event.venue}. The event was conducted in ${event.mode} mode.</p>
-<h2>2. Objective</h2><p>${event.objective}</p>
-<h2>3. Resource Person</h2><p>Name: ${event.resourcePerson.name}
-Designation: ${event.resourcePerson.designation}
-Organization: ${event.resourcePerson.organization}
-Contact: ${event.resourcePerson.contact}
-Email: ${event.resourcePerson.email}</p>
-<h2>4. Participation and Attendance</h2><p>Target students: ${event.targetStudents}
-Expected participants: ${event.expectedParticipants}
-Actual participants: ${event.actualParticipants}
-Attendance: ${event.attendance}%</p>
-<h2>5. Feedback</h2><p>Average feedback score: ${event.feedbackScore}/5</p>
-<h2>6. Description</h2><p>${event.description}</p>
-<p><strong>Event Coordinator:</strong> ${event.coordinator}</p></body></html>`;
-
-  const handlePreviewReport = () => {
-    const preview = window.open('', '_blank');
-    if (!preview) return;
-    preview.document.write(getReportHtml());
-    preview.document.close();
-  };
-
-  const handlePrintReport = () => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-    printWindow.document.write(getReportHtml());
-    printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
-  };
+  const createEventReportPdf = (records = feedbackRecords) => generateFinalEventReport(event, records);
 
   const createLegacyEventReportPdf = async () => {
     // Capture event data snapshot to prevent changes during generation
@@ -976,7 +939,6 @@ Attendance: ${event.attendance}%</p>
     return pdf;
   };
 
-  const createEventReportPdf = (records = feedbackRecords) => generateFinalEventReport(event, records);
 
   const downloadPdf = async (pdf: PDFDocument, filename: string) => {
     try {
@@ -1260,7 +1222,6 @@ Attendance: ${event.attendance}%</p>
           <div className="flex gap-2 bg-white rounded-2xl p-2 shadow-sm border border-slate-100 overflow-x-auto">
             {[
               { id: 'online', label: '🖥️ Online Roster' },
-              { id: 'qr', label: '📱 QR Check-In & Scanner' },
               { id: 'hardcopy', label: '📋 Hard Copy Upload' },
               { id: 'excel', label: '📊 Excel Import/Export' },
               { id: 'od_generator', label: '📜 OD Pass Generator' },
@@ -1423,118 +1384,6 @@ Attendance: ${event.attendance}%</p>
             </div>
           )}
 
-          {/* Mode 2: QR Check-In & Scanner */}
-          {attendanceMode === 'qr' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              {/* Event Display QR Code */}
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 text-center space-y-4">
-                <div>
-                  <h3 className="font-bold font-heading text-slate-800 text-lg">Event QR Code Check-In</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Project this QR Code on screen for student instant self check-in</p>
-                </div>
-
-                <div className="p-4 bg-indigo-50/60 rounded-2xl inline-block border-2 border-indigo-200 shadow-inner">
-                  {/* Dynamic Visual QR Code */}
-                  <svg className="w-48 h-48 mx-auto" viewBox="0 0 100 100" fill="currentColor">
-                    <rect width="100" height="100" fill="white" rx="8" />
-                    {/* Position patterns */}
-                    <rect x="5" y="5" width="30" height="30" fill="#4F46E5" rx="4" />
-                    <rect x="10" y="10" width="20" height="20" fill="white" rx="2" />
-                    <rect x="14" y="14" width="12" height="12" fill="#4F46E5" rx="1" />
-
-                    <rect x="65" y="5" width="30" height="30" fill="#4F46E5" rx="4" />
-                    <rect x="70" y="10" width="20" height="20" fill="white" rx="2" />
-                    <rect x="74" y="14" width="12" height="12" fill="#4F46E5" rx="1" />
-
-                    <rect x="5" y="65" width="30" height="30" fill="#4F46E5" rx="4" />
-                    <rect x="10" y="70" width="20" height="20" fill="white" rx="2" />
-                    <rect x="14" y="74" width="12" height="12" fill="#4F46E5" rx="1" />
-
-                    {/* Data pattern grid */}
-                    <rect x="42" y="10" width="8" height="8" fill="#4F46E5" />
-                    <rect x="52" y="18" width="8" height="8" fill="#4F46E5" />
-                    <rect x="42" y="42" width="16" height="16" fill="#4F46E5" rx="2" />
-                    <rect x="65" y="42" width="8" height="8" fill="#4F46E5" />
-                    <rect x="10" y="42" width="8" height="8" fill="#4F46E5" />
-                    <rect x="22" y="50" width="8" height="8" fill="#4F46E5" />
-                    <rect x="42" y="68" width="8" height="8" fill="#4F46E5" />
-                    <rect x="52" y="80" width="8" height="8" fill="#4F46E5" />
-                    <rect x="70" y="68" width="16" height="8" fill="#4F46E5" />
-                    <rect x="80" y="80" width="8" height="12" fill="#4F46E5" />
-                  </svg>
-                </div>
-
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs flex items-center justify-between gap-2">
-                  <span className="font-mono text-slate-600 truncate">http://academic-hub.edu/checkin/{event.id}</span>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard?.writeText(`http://academic-hub.edu/checkin/${event.id}`);
-                      setSaveToast('Copied QR Check-In link to clipboard!');
-                      setTimeout(() => setSaveToast(null), 2500);
-                    }}
-                    className="px-3 py-1 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700"
-                  >
-                    Copy Link
-                  </button>
-                </div>
-
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-700 font-semibold flex items-center justify-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                  Live Counter: {present} Students Checked In ({attendanceRate}%)
-                </div>
-              </div>
-
-              {/* Student Check-In Simulator / Scanner Input */}
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 space-y-4">
-                <div>
-                  <h3 className="font-bold font-heading text-slate-800 text-lg">Student Scanner Simulator</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Scan or type Roll / Registration No to verify presence live</p>
-                </div>
-
-                {qrMessage && (
-                  <div className={`p-3 rounded-xl text-xs font-semibold ${qrMessage.type === 'success' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
-                    {qrMessage.text}
-                  </div>
-                )}
-
-                <form onSubmit={handleQrCheckIn} className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Enter Reg No (e.g. 22IT001, 22IT003)..."
-                    value={qrRegInput}
-                    onChange={(e) => setQrRegInput(e.target.value)}
-                    className="px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-slate-50 flex-1 font-mono uppercase"
-                  />
-                  <button
-                    type="submit"
-                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-sm"
-                  >
-                    Check In
-                  </button>
-                </form>
-
-                <div>
-                  <h4 className="font-semibold text-xs text-slate-500 uppercase tracking-wider mb-2">Live Check-In Activity Log</h4>
-                  <div className="max-h-56 overflow-y-auto space-y-2 border border-slate-100 rounded-xl p-2 bg-slate-50/50">
-                    {qrLogs.length === 0 ? (
-                      <div className="text-center py-6 text-xs text-slate-400">No student check-ins recorded yet in this session.</div>
-                    ) : (
-                      qrLogs.map((log, index) => (
-                        <div key={`${log.regNo}-${index}`} className="flex items-center justify-between p-2.5 bg-white rounded-lg shadow-2xs border border-slate-100 text-xs">
-                          <div className="flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                            <span className="font-mono font-bold text-slate-700">{log.regNo}</span>
-                            <span className="text-slate-600 font-medium">{log.name}</span>
-                          </div>
-                          <span className="text-slate-400 font-mono text-xs">{log.time}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Mode 3: Hard Copy Upload */}
           {attendanceMode === 'hardcopy' && (
@@ -2226,9 +2075,10 @@ Attendance: ${event.attendance}%</p>
               <div className="p-8 border-2 border-slate-300 rounded-2xl bg-white space-y-6 max-w-3xl mx-auto shadow-inner text-slate-800">
                 {/* Letterhead Header */}
                 <div className="text-center border-b-2 border-indigo-600 pb-4 space-y-1">
-                  <h2 className="text-lg font-bold font-heading uppercase text-indigo-900 tracking-wider">Academic Event Hub — Department of {event.department}</h2>
+                  <h2 className="text-xl font-bold font-heading text-indigo-900 tracking-wider">SONA COLLEGE OF TECHNOLOGY,SALEM</h2>
+                  <p className="text-sm font-bold text-indigo-700">Department of Information Technology</p>
                   <p className="text-xs text-slate-500">Official Student On-Duty (OD) Recommendation Form</p>
-                  <p className="text-xs text-slate-400 font-mono">Ref: OD/{event.academicYear}/{event.id}</p>
+                  <p className="text-xs text-slate-400 font-mono">Ref: OD/{event.academicYear || '2025-26'}/{event.id}</p>
                 </div>
 
                 {/* Event Summary */}
@@ -2406,7 +2256,7 @@ Attendance: ${event.attendance}%</p>
               </thead>
               <tbody>
                 {documentCategories.map((doc, i) => {
-                  const uploaded = eventDocuments.find(item => item.category === doc.category);
+                  const uploaded = eventDocuments.find(item => item.category === doc.category || item.documentType === doc.category);
                   return (
                   <tr key={doc.category} className="border-b border-slate-50 hover:bg-slate-50">
                     <td className="px-4 py-3 text-slate-400 text-xs">{i + 1}</td>
@@ -2441,7 +2291,7 @@ Attendance: ${event.attendance}%</p>
                   </tr>
                   );
                 })}
-                {eventDocuments.filter(document => !documentCategories.some(item => item.category === document.category)).map((document, i) => (
+                {eventDocuments.filter(document => !documentCategories.some(item => item.category === document.category || item.category === document.documentType)).map((document, i) => (
                   <tr key={document.id} className="border-b border-slate-50 hover:bg-slate-50">
                     <td className="px-4 py-3 text-slate-400 text-xs">{documentCategories.length + i + 1}</td>
                     <td className="px-4 py-3 font-medium text-slate-800">{document.name}</td>
@@ -2455,159 +2305,222 @@ Attendance: ${event.attendance}%</p>
         </div>
       )}
 
-      {tab === 'ai-analysis' && (
-        <div className="space-y-4">
-          {!aiGenerated ? (
-            <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-100 text-center">
-              <div className="text-5xl mb-4">🤖</div>
-              <h3 className="text-xl font-bold font-heading text-slate-800 mb-2">AI Analysis</h3>
-              <p className="text-slate-500 text-sm mb-6 max-w-md mx-auto">
-                Generate an AI-powered analysis of this event using attendance data, feedback responses, documents, and event details.
-              </p>
-              <button
-                onClick={handleGenAI}
-                disabled={aiLoading}
-                className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-sm disabled:opacity-60"
-              >
-                {aiLoading ? (
-                  <span className="flex items-center gap-2">
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Generating Analysis...
-                  </span>
-                ) : '✨ Generate AI Analysis'}
-              </button>
-              {aiError && <p className="text-sm text-red-600 mt-4">{aiError}</p>}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-100 rounded-2xl p-5">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-lg">🤖</span>
-                  <span className="font-bold font-heading text-indigo-800">AI-Generated Executive Summary</span>
-                  <span className="ml-auto text-xs text-indigo-400">Generated just now</span>
-                </div>
-                <p className="text-sm text-slate-700 mt-2">{aiAnalysis?.executiveSummary}</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 md:col-span-2">
-                  <h4 className="font-semibold text-slate-800 mb-3">Event Data Used</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm text-slate-600">
-                    <p><strong>Event:</strong> {event.name}</p><p><strong>Type:</strong> {event.type}</p>
-                    <p><strong>Department:</strong> {event.department}</p><p><strong>Date:</strong> {event.date}</p>
-                    <p><strong>Venue:</strong> {event.venue}</p><p><strong>Coordinator:</strong> {event.coordinator}</p>
-                    <p className="md:col-span-2"><strong>Objective:</strong> {event.objective || 'Not Available'}</p>
-                    <p className="md:col-span-2"><strong>Topics Covered:</strong> {reportTopics}</p>
-                  </div>
-                </div>
-                {[
-                  { title: 'A. Overall Event Performance', items: [aiAnalysis?.overallPerformance || 'Not Available'] },
-                  { title: 'B. Attendance Analysis', items: [aiAnalysis?.attendance || 'Not Available', `Expected: ${attendanceSummary?.expectedParticipants ?? 'Not Available'}`, `Actual: ${attendanceSummary?.actualParticipants ?? 'Not Available'}`, `Present: ${attendanceSummary?.present ?? 'Not Available'}`, `Absent: ${attendanceSummary?.absent ?? 'Not Available'}`, `Attendance: ${attendanceSummary?.attendancePercentage === undefined ? 'Not Available' : `${attendanceSummary.attendancePercentage.toFixed(1)}%`}`] },
-                  { title: 'C. Feedback Analysis', items: [aiAnalysis?.feedback || 'Not Available', `Overall rating: ${feedbackAverage(feedbackRecords, 'overallRating', 'overall', 'rating', 'overallScore')}`, `Session content: ${feedbackAverage(feedbackRecords, 'sessionContentRating', 'contentRating', 'content', 'sessionContent')}`, `Speaker effectiveness: ${feedbackAverage(feedbackRecords, 'speakerEffectivenessRating', 'speakerRating', 'speakerEffectiveness', 'speaker')}`, `Usefulness: ${feedbackAverage(feedbackRecords, 'usefulnessToStudents', 'usefulnessRating', 'usefulness', 'relevanceRating')}`, `Overall satisfaction/response: ${feedbackAverage(feedbackRecords, 'overallSatisfaction', 'satisfactionRating', 'satisfaction') === 'Not Available' ? feedbackText(feedbackRecords, 'overallSatisfaction', 'satisfactionResponse', 'response') : feedbackAverage(feedbackRecords, 'overallSatisfaction', 'satisfactionRating', 'satisfaction')}`, `Positive ratings: ${feedbackHighRating}`] },
-                  { title: 'D. Key Strengths', items: aiAnalysis?.strengths || [] },
-                  { title: 'E. Areas for Improvement', items: aiAnalysis?.improvements || [] },
-                  { title: 'F. Key Outcomes', items: aiAnalysis?.outcomes || [] },
-                  { title: 'G. Recommendations', items: aiAnalysis?.recommendations || [] },
-                ].map(section => (
-                  <div key={section.title} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
-                    <h4 className="font-semibold text-slate-800 mb-2">{section.title}</h4>
-                    <ul className="space-y-1">
-                      {section.items.map(item => (
-                        <li key={item} className="text-sm text-slate-600 flex gap-2"><span className="text-indigo-400 flex-shrink-0">•</span>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-
-              {Object.keys(attendanceSummary?.departmentParticipation || {}).length > 0 && (
-                <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-                  <h4 className="font-semibold text-slate-800 mb-3">Department-wise Participation</h4>
-                  <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-slate-100 text-left"><th className="py-2">Department</th><th className="py-2">Present</th><th className="py-2">Absent</th><th className="py-2">Total</th></tr></thead><tbody>{Object.entries(attendanceSummary?.departmentParticipation || {}).map(([department, values]) => <tr key={department} className="border-b border-slate-50"><td className="py-2">{department}</td><td className="py-2">{values.present}</td><td className="py-2">{values.absent}</td><td className="py-2">{values.total}</td></tr>)}</tbody></table></div>
-                </div>
-              )}
-
-              <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-                <h4 className="font-semibold text-slate-800 mb-2">Student Comments</h4>
-                {feedbackRecords.length === 0 ? <p className="text-sm text-slate-500">No feedback responses were recorded for this event.</p> : feedbackComments.length ? feedbackComments.map((comment, index) => <p key={`${comment}-${index}`} className="text-sm text-slate-600 border-b border-slate-50 py-2">{comment}</p>) : <p className="text-sm text-slate-500">No student comments were recorded.</p>}
-              </div>
-
-              <div className="flex gap-3">
-                <button onClick={() => setAiGenerated(false)} className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl text-sm hover:bg-slate-50">
-                  🔄 Regenerate
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
       {tab === 'final-report' && (
         <div className="space-y-4">
-          <div className="flex flex-wrap gap-3">
-            <button onClick={handleGenReport} disabled={reportLoading} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium disabled:opacity-60">
-              {reportLoading ? <span className="flex items-center gap-2"><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Generating...</span> : '📄 Generate Report'}
-            </button>
-            {reportGenerated && (
-              <>
-                <button onClick={handlePreviewReport} className="px-4 py-2 border border-indigo-200 text-indigo-600 rounded-xl text-sm font-medium hover:bg-indigo-50">👁️ Preview Report</button>
+          {!finalReportGenerated ? (
+            <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-100 text-center space-y-4">
+              <div className="text-5xl mb-2">✨</div>
+              <h3 className="text-xl font-bold font-heading text-slate-800">AI Final Report Generator</h3>
+              <p className="text-slate-500 text-sm max-w-lg mx-auto">
+                Generate a comprehensive, AI-analyzed event report combining event overview, attendance statistics, student feedback analytics, and uploaded documents.
+              </p>
+              <div className="pt-2">
                 <button
-                  onClick={handleDownloadReport}
-                  disabled={reportDownloadLoading}
-                  className="px-4 py-2 border border-green-200 text-green-600 rounded-xl text-sm font-medium hover:bg-green-50 disabled:opacity-60"
+                  onClick={handleGenerateAIFinalReport}
+                  disabled={finalReportLoading}
+                  className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-sm disabled:opacity-60 transition-all hover:shadow-md"
                 >
-                  {reportDownloadLoading ? 'Preparing PDF...' : '📥 Download Report'}
+                  {finalReportLoading ? (
+                    <span className="flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Generating AI Report...
+                    </span>
+                  ) : '✨ Generate AI Final Report'}
                 </button>
-                <button onClick={handlePrintReport} className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl text-sm font-medium hover:bg-slate-50">🖨️ Print</button>
-                <button onClick={handleGenAI} className="px-4 py-2 border border-violet-200 text-violet-600 rounded-xl text-sm font-medium hover:bg-violet-50">✨ Regenerate with AI</button>
-              </>
-            )}
-          </div>
-
-          {reportGenerated ? (
-            <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-100 space-y-6">
-              {/* Report Header */}
-              <div className="text-center border-b border-slate-200 pb-6">
-                <div className="font-bold text-lg font-heading text-slate-900">ACADEMIC EVENT HUB</div>
-                <div className="text-slate-600">Department: {reportValue(event.department)}</div>
-                <div className="mt-3 font-bold text-base font-heading text-indigo-700">FINAL EVENT REPORT</div>
-                <div className="text-slate-600 text-sm mt-1">{reportValue(event.name)}</div>
-                <div className="text-slate-500 text-xs mt-1">Date: {reportValue(event.date)} | Time: {event.startTime && event.endTime ? `${event.startTime} - ${event.endTime}` : 'Not Available'} | Venue: {reportValue(event.venue)}</div>
               </div>
-
-              {reportSections.map(section => (
-                <div key={section.num}>
-                  <h4 className="font-bold font-heading text-slate-800 mb-2">{section.num}. {section.title}</h4>
-                  <p className="text-sm text-slate-600 whitespace-pre-line">{section.content}</p>
+              {finalReportError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm max-w-md mx-auto">
+                  {finalReportError}
                 </div>
-              ))}
-
-              {/* Signatures */}
-              <div className="border-t border-slate-200 pt-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center text-sm text-slate-600">
-                  <div>
-                    <div className="h-12 border-b border-slate-300 mb-2" />
-                    <div className="font-medium">{reportValue(event.coordinator)}</div>
-                    <div className="text-xs text-slate-400">Event Coordinator</div>
-                  </div>
-                  <div>
-                    <div className="h-12 border-b border-slate-300 mb-2" />
-                    <div className="font-medium">Not Available</div>
-                    <div className="text-xs text-slate-400">Head of Department</div>
-                  </div>
-                  <div>
-                    <div className="h-12 border-b border-slate-300 mb-2" />
-                    <div className="font-medium">Not Available</div>
-                    <div className="text-xs text-slate-400">Principal / Authorized Signatory</div>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           ) : (
-            <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-100 text-center">
-              <div className="text-5xl mb-4">📄</div>
-              <h3 className="text-lg font-bold font-heading text-slate-700">Report Not Generated Yet</h3>
-              <p className="text-slate-500 text-sm mt-2">Click "Generate Report" to create a comprehensive academic event report.</p>
+            <div className="space-y-6">
+              {/* Action Toolbar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-sm font-semibold text-slate-700">AI Report Ready</span>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    onClick={handleDownloadFinalReportPDF}
+                    disabled={finalReportDownloadLoading}
+                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-sm disabled:opacity-60 flex items-center gap-2"
+                  >
+                    {finalReportDownloadLoading ? (
+                      <span className="flex items-center gap-2">
+                        <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Preparing PDF...
+                      </span>
+                    ) : '⬇ Download PDF'}
+                  </button>
+                  <button
+                    onClick={handleGenerateAIFinalReport}
+                    disabled={finalReportLoading}
+                    className="px-4 py-2.5 border border-indigo-200 text-indigo-700 rounded-xl text-sm font-semibold hover:bg-indigo-50 disabled:opacity-60 flex items-center gap-2"
+                  >
+                    {finalReportLoading ? 'Generating...' : '🔄 Regenerate Report'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Inline Report View */}
+              <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-100 space-y-6">
+                {/* Header Branding */}
+                <div className="text-center border-b-2 border-indigo-600 pb-6 space-y-1">
+                  <h1 className="text-2xl font-bold font-heading text-indigo-900 tracking-wider">SONA COLLEGE OF TECHNOLOGY,SALEM</h1>
+                  <h2 className="text-base font-bold text-indigo-700">Department of Information Technology</h2>
+                  <div className="pt-3">
+                    <span className="inline-block px-4 py-1.5 bg-indigo-50 text-indigo-800 rounded-full text-xs font-bold uppercase tracking-widest border border-indigo-200">
+                      FINAL EVENT REPORT
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-800 pt-2">{event.name}</h3>
+                  <p className="text-xs text-slate-500">
+                    {event.type && `Type: ${event.type}`}
+                    {event.date && ` | Date: ${event.date}`}
+                    {event.startTime && event.endTime && ` | Time: ${event.startTime} - ${event.endTime}`}
+                    {event.venue && ` | Venue: ${event.venue}`}
+                  </p>
+                </div>
+
+                {/* AI Content Sections */}
+                {finalReportContent && (
+                  <div className="space-y-6 text-slate-700 text-sm">
+                    {/* Event Overview */}
+                    {finalReportContent.eventOverview && (
+                      <div className="space-y-2">
+                        <h4 className="font-bold text-indigo-900 border-b border-slate-100 pb-1 text-base">1. Event Overview</h4>
+                        <p className="leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100">{finalReportContent.eventOverview}</p>
+                      </div>
+                    )}
+
+                    {/* Event Objectives */}
+                    {finalReportContent.eventObjectives && (
+                      <div className="space-y-2">
+                        <h4 className="font-bold text-indigo-900 border-b border-slate-100 pb-1 text-base">2. Objectives</h4>
+                        <p className="leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100">{finalReportContent.eventObjectives}</p>
+                      </div>
+                    )}
+
+                    {/* Resource Person */}
+                    {finalReportContent.resourcePerson && (
+                      <div className="space-y-2">
+                        <h4 className="font-bold text-indigo-900 border-b border-slate-100 pb-1 text-base">3. Resource Person Details</h4>
+                        <p className="leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100">{finalReportContent.resourcePerson}</p>
+                      </div>
+                    )}
+
+                    {/* Attendance Analysis */}
+                    {finalReportContent.attendanceAnalysis && (
+                      <div className="space-y-2">
+                        <h4 className="font-bold text-indigo-900 border-b border-slate-100 pb-1 text-base">4. Attendance Summary & Analysis</h4>
+                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
+                          <p className="leading-relaxed">{finalReportContent.attendanceAnalysis.summary}</p>
+                          {finalReportContent.attendanceAnalysis.statistics && (
+                            <div className="p-3 bg-white rounded-lg border border-slate-200 font-mono text-xs font-semibold text-indigo-900">
+                              {finalReportContent.attendanceAnalysis.statistics}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Feedback Analysis */}
+                    {finalReportContent.feedbackAnalysis && (
+                      <div className="space-y-3">
+                        <h4 className="font-bold text-indigo-900 border-b border-slate-100 pb-1 text-base">5. Feedback Analysis (Primary Evaluation)</h4>
+                        <div className="bg-slate-50 p-5 rounded-xl border border-slate-100 space-y-3">
+                          <p className="leading-relaxed">{finalReportContent.feedbackAnalysis.overview}</p>
+                          {finalReportContent.feedbackAnalysis.ratingsSummary && (
+                            <p className="font-medium text-slate-800">{finalReportContent.feedbackAnalysis.ratingsSummary}</p>
+                          )}
+                          {finalReportContent.feedbackAnalysis.positiveObservations && finalReportContent.feedbackAnalysis.positiveObservations.length > 0 && (
+                            <div>
+                              <h5 className="font-semibold text-emerald-800 mb-1">Positive Highlights:</h5>
+                              <ul className="list-disc list-inside space-y-1 text-xs text-slate-700">
+                                {finalReportContent.feedbackAnalysis.positiveObservations.map((item, idx) => (
+                                  <li key={idx}>{item}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {finalReportContent.feedbackAnalysis.studentSentiment && (
+                            <p className="text-xs italic text-slate-600 border-t border-slate-200 pt-2">
+                              <strong>Student Sentiment:</strong> {finalReportContent.feedbackAnalysis.studentSentiment}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Strengths */}
+                    {finalReportContent.eventStrengths && finalReportContent.eventStrengths.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="font-bold text-indigo-900 border-b border-slate-100 pb-1 text-base">6. Key Strengths</h4>
+                        <ul className="bg-slate-50 p-4 rounded-xl border border-slate-100 list-disc list-inside space-y-1.5">
+                          {finalReportContent.eventStrengths.map((item, idx) => (
+                            <li key={idx} className="leading-relaxed">{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Areas for Improvement */}
+                    {finalReportContent.areasForImprovement && finalReportContent.areasForImprovement.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="font-bold text-indigo-900 border-b border-slate-100 pb-1 text-base">7. Areas for Improvement</h4>
+                        <ul className="bg-slate-50 p-4 rounded-xl border border-slate-100 list-disc list-inside space-y-1.5">
+                          {finalReportContent.areasForImprovement.map((item, idx) => (
+                            <li key={idx} className="leading-relaxed">{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Recommendations */}
+                    {finalReportContent.recommendations && finalReportContent.recommendations.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="font-bold text-indigo-900 border-b border-slate-100 pb-1 text-base">8. Actionable Recommendations</h4>
+                        <ul className="bg-slate-50 p-4 rounded-xl border border-slate-100 list-disc list-inside space-y-1.5">
+                          {finalReportContent.recommendations.map((item, idx) => (
+                            <li key={idx} className="leading-relaxed">{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Overall Assessment */}
+                    {finalReportContent.overallAssessment && (
+                      <div className="space-y-2">
+                        <h4 className="font-bold text-indigo-900 border-b border-slate-100 pb-1 text-base">9. Overall Assessment & Conclusion</h4>
+                        <p className="leading-relaxed bg-indigo-50/60 p-4 rounded-xl border border-indigo-100 font-medium text-slate-800">{finalReportContent.overallAssessment}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Official Signatures */}
+                <div className="border-t border-slate-200 pt-8 mt-8">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center text-sm">
+                    <div>
+                      <div className="h-14 border-b border-slate-300 mb-2 flex items-end justify-center pb-1">
+                        <span className="font-semibold text-slate-800">{event.coordinator || ''}</span>
+                      </div>
+                      <div className="font-bold text-slate-800">Event Coordinator</div>
+                    </div>
+                    <div>
+                      <div className="h-14 border-b border-slate-300 mb-2" />
+                      <div className="font-bold text-slate-800">Head of Department</div>
+                    </div>
+                    <div>
+                      <div className="h-14 border-b border-slate-300 mb-2" />
+                      <div className="font-bold text-slate-800">Principal / Authorized Signatory</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -2761,31 +2674,27 @@ Attendance: ${event.attendance}%</p>
                 <input value={uploadDocName} onChange={e => setUploadDocName(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
               </div>
               <div>
-                <label className="text-xs text-slate-500 mb-1 block">Document Type</label>
+                <label className="text-xs text-slate-500 mb-1 block">Document Category</label>
                 <select value={uploadCategory} onChange={e => setUploadCategory(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
                   {documentCategories.map(item => <option key={item.category} value={item.category}>{item.name}</option>)}
                 </select>
               </div>
-              <div>
-                <label className="text-xs text-slate-500 mb-1 block">Description</label>
-                <textarea className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 h-20 resize-none" />
-              </div>
               <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 text-center">
                 <div className="text-2xl mb-2">📁</div>
                 <div className="text-sm text-slate-600">Drop files here or click to browse</div>
-                <div className="text-xs text-slate-400 mt-1">PDF, DOC, XLSX, JPG supported</div>
+                <div className="text-xs text-slate-400 mt-1">PDF, DOC, XLSX, JPG, PNG supported</div>
                 <input id="event-document-files" type="file" accept=".pdf,.jpg,.jpeg,.png,.xlsx,.doc,.docx" multiple className="hidden" onChange={e => setUploadFiles(Array.from(e.target.files || []))} />
                 <label htmlFor="event-document-files" className="inline-block mt-3 px-4 py-1.5 bg-indigo-600 text-white text-xs rounded-xl cursor-pointer">Browse Files</label>
-                {uploadFiles.length > 0 && <div className="text-xs text-green-600 mt-2">{uploadFiles.length} file(s) selected</div>}
+                {uploadFiles.length > 0 && <div className="text-xs text-green-600 mt-2">{uploadFiles.length} file(s) selected: {uploadFiles[0].name}</div>}
               </div>
               <div className="flex gap-3">
-                <button onClick={() => setShowUploadModal(false)} className="flex-1 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
+                <button onClick={() => { setShowUploadModal(false); setUploadFiles([]); setReplaceDocumentId(null); }} className="flex-1 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
                 <button
                   onClick={async () => {
                     const file = uploadFiles[0];
                     if (!file) { setDocumentError('Select a file before uploading.'); return; }
                     try {
-                      if (replaceDocumentId) await replaceEventDocument(replaceDocumentId, file, uploadDocName);
+                      if (replaceDocumentId) await replaceEventDocument(replaceDocumentId, file, uploadDocName || file.name);
                       else await uploadEventDocument(eventId, file, uploadCategory, uploadDocName || file.name);
                       await refreshEventDocuments();
                       setUploadFiles([]);
@@ -2794,7 +2703,7 @@ Attendance: ${event.attendance}%</p>
                     } catch { setDocumentError('Unable to save this document. Please try again.'); }
                   }}
                   className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium"
-                >Upload Documents</button>
+                >Upload Document</button>
               </div>
             </div>
           </div>

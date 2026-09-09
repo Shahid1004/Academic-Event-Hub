@@ -41,7 +41,7 @@ export default function MyAssignedEvents({ navigate, profile }: MyAssignedEvents
                 <div className="flex-1">
                   <div className="flex items-start gap-3 flex-wrap">
                     <h3 className="font-semibold text-slate-800 text-base">{event.name}</h3>
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[event.status]}`}>{event.status}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[event.status || 'Upcoming'] || 'bg-gray-100 text-gray-700'}`}>{event.status}</span>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${eventTypeColors[event.type] || 'bg-gray-100 text-gray-700'}`}>{event.type}</span>
