@@ -32,14 +32,15 @@ const getEventFeedback = async (req, res) => {
     if (!canManageEventFeedback(event, req.user)) {
       return res.status(403).json({ success: false, message: "You do not have access to this event's feedback" });
     }
+    const resolvedEventId = event.id || eventId;
     let records = await Feedback.find({
-      $or: [{ eventId }, { event: eventId }]
+      $or: [{ eventId: resolvedEventId }, { event: resolvedEventId }]
     }).sort({ createdAt: 1, _id: 1 }).lean();
 
     if (!records.length) {
       const embedded = event?.feedbackResponses || event?.feedbackRecords || event?.feedback;
       if (Array.isArray(embedded)) {
-        records = embedded.map((record, index) => ({ ...record, eventId, _id: record._id || `embedded-${index}` }));
+        records = embedded.map((record, index) => ({ ...record, eventId: resolvedEventId, _id: record._id || `embedded-${index}` }));
       }
     }
 
@@ -76,9 +77,22 @@ const getFeedbackAnalytics = async (req, res) => {
     }
     const resolvedEventId = event.id || req.params.eventId;
     const form = await FeedbackForm.findOne({ eventId: resolvedEventId }).lean();
-    const records = form
-      ? await Feedback.find({ eventId: resolvedEventId, feedbackFormId: form._id }).lean()
-      : [];
+    // Query feedback records by eventId — if a form exists, prefer form-linked records;
+    // otherwise fall back to ALL feedback for this event (matching getEventFeedback behavior).
+    let records;
+    if (form) {
+      records = await Feedback.find({ eventId: resolvedEventId, feedbackFormId: form._id }).lean();
+      // If no form-linked records found, also check for feedback without feedbackFormId
+      if (!records.length) {
+        records = await Feedback.find({
+          $or: [{ eventId: resolvedEventId }, { event: resolvedEventId }]
+        }).lean();
+      }
+    } else {
+      records = await Feedback.find({
+        $or: [{ eventId: resolvedEventId }, { event: resolvedEventId }]
+      }).lean();
+    }
     const attendanceRecords = await Attendance.find({
       $or: [{ eventId: resolvedEventId }, { event: resolvedEventId }]
     }).select("regNo").lean();

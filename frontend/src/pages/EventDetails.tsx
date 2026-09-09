@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import * as XLSX from 'xlsx';
 import type { AttendanceStatus, EventRecord, Page, StudentAttendanceRecord } from '../types';
 import { eventTypeColors } from './Dashboard';
-import { getEventAttendanceApi, getEvents, importEventAttendanceRosterApi, saveEventAttendanceApi, scanHardCopyAttendanceApi } from '../services/api';
+import { addStudentToEventApi, getEventAttendanceApi, getEvents, importEventAttendanceRosterApi, saveEventAttendanceApi, scanHardCopyAttendanceApi } from '../services/api';
 import { sampleEvents } from '../data/sampleData';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { generateFinalEventReport } from '../utils/finalEventReportGenerator';
@@ -213,31 +213,7 @@ const initialDefaultStudents: StudentAttendanceRecord[] = sortAttendanceRecords(
   }))
 );
 
-const feedbackData = [
-  { label: '5 Stars', count: 28, pct: 52 },
-  { label: '4 Stars', count: 18, pct: 33 },
-  { label: '3 Stars', count: 6, pct: 11 },
-  { label: '2 Stars', count: 2, pct: 4 },
-  { label: '1 Star', count: 0, pct: 0 },
-];
 
-const comments = [
-  'Excellent hands-on session! The instructor was very clear and patient.',
-  'Really helpful for our project work. Would love more such sessions.',
-  'Good content, but the time was a bit short. Need more practice sessions.',
-  'Very informative. The resource person explained concepts with real-world examples.',
-];
-
-const feedbackSubmitters = [
-  { reg: '22IT001', name: 'Arun Kumar M', submitted: true },
-  { reg: '22IT002', name: 'Bhavya S', submitted: true },
-  { reg: '22IT003', name: 'Chethan R', submitted: false },
-  { reg: '22IT004', name: 'Divya P', submitted: true },
-  { reg: '22IT005', name: 'Elan K', submitted: true },
-  { reg: '22IT006', name: 'Fathima N', submitted: false },
-  { reg: '22IT007', name: 'Ganesh S', submitted: true },
-  { reg: '22IT008', name: 'Harini M', submitted: true },
-];
 
 export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
   const [tab, setTab] = useState<Tab>('overview');
@@ -258,10 +234,11 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
     regNo: '',
     studentName: '',
     className: '',
-    department: '',
+    department: 'Information Technology',
     status: 'P' as AttendanceStatus,
   });
   const [addStudentError, setAddStudentError] = useState<string | null>(null);
+  const [addingStudentLoading, setAddingStudentLoading] = useState(false);
 
   // Hardcopy AI upload & scan state
   const [hardCopySheetType, setHardCopySheetType] = useState<'signed' | 'participant_list'>('signed');
@@ -568,7 +545,7 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
     setTimeout(() => setSaveToast(null), 3500);
   };
 
-  // Add student manually with duplicate prevention & auto-sorting
+  // Add student manually with persistent backend saving, duplicate validation & auto-sorting
   const handleAddStudentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanReg = addStudentForm.regNo.trim().toUpperCase();
@@ -578,37 +555,51 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
       return;
     }
 
-    // Duplicate check
+    // Client-side duplicate check
     const isDuplicate = attendanceRecords.some(
       (s) => s.regNo.trim().toUpperCase() === cleanReg
     );
     if (isDuplicate) {
-      setAddStudentError('This student is already in the attendance roster.');
+      setAddStudentError(`Student with Register Number "${cleanReg}" is already in the attendance roster.`);
       return;
     }
 
-    const finalDept = deriveDepartment(addStudentForm.department, addStudentForm.className);
-    const newStudent: StudentAttendanceRecord = {
-      eventId,
-      regNo: cleanReg,
-      studentName: cleanName,
-      className: addStudentForm.className.trim() || '-',
-      department: finalDept,
-      status: addStudentForm.status,
-      checkInMethod: 'manual',
-      markedAt: new Date().toLocaleTimeString(),
-      remarks: '',
-    };
-
-    const updatedRoster = sortAttendanceRecords([...attendanceRecords, newStudent]);
-    setAttendanceRecords(updatedRoster);
-    await saveEventAttendanceApi(eventId, updatedRoster);
-
-    setShowAddStudentModal(false);
-    setAddStudentForm({ regNo: '', studentName: '', className: '', department: '', status: 'P' });
+    setAddingStudentLoading(true);
     setAddStudentError(null);
-    setSaveToast(`✅ Student ${cleanName} (${cleanReg}) added to Online Roster!`);
-    setTimeout(() => setSaveToast(null), 3000);
+
+    const finalDept = deriveDepartment(addStudentForm.department, addStudentForm.className);
+
+    try {
+      const response = await addStudentToEventApi(eventId, {
+        regNo: cleanReg,
+        studentName: cleanName,
+        className: addStudentForm.className.trim() || '-',
+        department: finalDept,
+        status: addStudentForm.status,
+      });
+
+      if (!response || !response.success) {
+        setAddStudentError(response?.message || 'Failed to save student to database.');
+        setAddingStudentLoading(false);
+        return;
+      }
+
+      // Successful persistence in database -> update frontend state with fresh backend roster
+      if (response.data && response.data.records) {
+        setAttendanceRecords(sortAttendanceRecords(response.data.records));
+      }
+
+      setShowAddStudentModal(false);
+      setAddStudentForm({ regNo: '', studentName: '', className: '', department: 'Information Technology', status: 'P' });
+      setAddStudentError(null);
+      setSaveToast(`✅ Student ${cleanName} (${cleanReg}) saved to database & added to roster!`);
+      setTimeout(() => setSaveToast(null), 3000);
+    } catch (err: any) {
+      console.error('Error adding student:', err);
+      setAddStudentError(err?.response?.data?.message || err?.message || 'Failed to save student to database.');
+    } finally {
+      setAddingStudentLoading(false);
+    }
   };
 
   // ── Client-side guard: reject any AI row containing SVG/XML/garbage data ──
@@ -2189,7 +2180,7 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
                   <div key={f.rating} className="flex items-center gap-2">
                     <span className="text-xs text-slate-500 w-12">{f.rating} Stars</span>
                     <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-amber-400 rounded-full" style={{ width: `${feedbackRecords.length ? (f.count / feedbackRecords.length) * 100 : 0}%` }} />
+                      <div className="h-full bg-amber-400 rounded-full" style={{ width: `${(feedbackAnalytics?.totalResponses || feedbackRecords.length) ? (f.count / (feedbackAnalytics?.totalResponses || feedbackRecords.length)) * 100 : 0}%` }} />
                     </div>
                     <span className="text-xs text-slate-500 w-6">{f.count}</span>
                   </div>
@@ -2819,13 +2810,14 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Department</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Information Technology"
-                    value={addStudentForm.department}
+                  <select
+                    value={addStudentForm.department || 'Information Technology'}
                     onChange={(e) => setAddStudentForm((prev) => ({ ...prev, department: e.target.value }))}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-400 focus:outline-none bg-slate-50"
-                  />
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-400 focus:outline-none bg-slate-50 font-medium text-slate-800 text-xs"
+                  >
+                    <option value="Information Technology">Information Technology</option>
+                    <option value="Artificial Intelligence and Data Science">Artificial Intelligence and Data Science</option>
+                  </select>
                 </div>
               </div>
 
@@ -2866,9 +2858,17 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-md"
+                  disabled={addingStudentLoading}
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl font-bold shadow-md transition-all flex items-center gap-1.5"
                 >
-                  ➕ Add Student
+                  {addingStudentLoading ? (
+                    <>
+                      <span className="animate-spin text-sm">⏳</span>
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <span>➕ Add Student</span>
+                  )}
                 </button>
               </div>
             </form>

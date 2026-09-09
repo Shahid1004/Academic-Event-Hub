@@ -302,6 +302,49 @@ export async function saveEventAttendanceApi(eventId: string, records: StudentAt
   }
 }
 
+export async function addStudentToEventApi(
+  eventId: string,
+  studentData: {
+    regNo: string;
+    studentName: string;
+    className?: string;
+    department?: string;
+    status?: string;
+    remarks?: string;
+  }
+): Promise<{
+  success: boolean;
+  message: string;
+  data?: {
+    eventId: string;
+    summary: AttendanceSummary;
+    records: StudentAttendanceRecord[];
+  };
+}> {
+  try {
+    const token = getToken();
+    if (!token) {
+      return { success: false, message: 'Authentication required. Please log in again.' };
+    }
+
+    const response = await axios.post<{
+      success: boolean;
+      message: string;
+      data: {
+        eventId: string;
+        summary: AttendanceSummary;
+        records: StudentAttendanceRecord[];
+      };
+    }>(`${apiUrl}/api/attendance/event/${encodeURIComponent(eventId)}/add-student`, studentData, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return response.data;
+  } catch (err: any) {
+    const errorMessage = err.response?.data?.message || err.message || 'Failed to add student';
+    return { success: false, message: errorMessage };
+  }
+}
+
 export async function importEventAttendanceRosterApi(eventId: string, students: Array<{ regNo: string; studentName: string; department?: string; className?: string }>) {
   try {
     const token = getToken();

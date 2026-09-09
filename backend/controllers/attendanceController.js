@@ -112,6 +112,107 @@ const normalizeStudentRecord = (student = {}) => {
   };
 };
 
+const ensureDefaultStudentsSeeded = async (eventId) => {
+  const count = await Attendance.countDocuments({ eventId });
+  if (count === 0) {
+    const initialRecords = defaultStudents.map((s) => ({
+      eventId,
+      regNo: String(s.regNo).trim().toUpperCase(),
+      studentName: String(s.studentName).trim(),
+      className: s.className || "",
+      department: deriveDepartment(s.department, s.className),
+      status: s.status || "",
+      checkInMethod: "online",
+      markedAt: new Date(),
+    }));
+    await Attendance.insertMany(initialRecords);
+  }
+};
+
+const addStudentToAttendance = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const { regNo, studentName, className, department, status, remarks } = req.body;
+
+    if (!eventId) {
+      return res.status(400).json({ success: false, message: "Event ID is required" });
+    }
+
+    const cleanReg = String(regNo || "").trim().toUpperCase();
+    const cleanName = String(studentName || "").trim();
+
+    if (!cleanReg || !cleanName) {
+      return res.status(400).json({
+        success: false,
+        message: "Register Number and Student Name are required."
+      });
+    }
+
+    await ensureDefaultStudentsSeeded(eventId);
+
+    const existing = await Attendance.findOne({ eventId, regNo: cleanReg }).lean();
+    if (existing) {
+      return res.status(400).json({
+        success: false,
+        message: `Student with Register Number "${cleanReg}" already exists in the roster.`
+      });
+    }
+
+    const finalDepartment = deriveDepartment(department, className);
+
+    const recordData = {
+      eventId,
+      regNo: cleanReg,
+      studentName: cleanName,
+      className: className ? String(className).trim() : "-",
+      department: finalDepartment,
+      status: status || "P",
+      checkInMethod: "manual",
+      markedAt: new Date(),
+      remarks: remarks ? String(remarks).trim() : "",
+    };
+
+    if (req.user?._id && mongoose.Types.ObjectId.isValid(req.user._id)) {
+      recordData.markedBy = req.user._id;
+    }
+
+    const newRecord = new Attendance(recordData);
+
+    await newRecord.save();
+
+    const allRecords = await Attendance.find({ eventId }).lean();
+    const sortedRecords = sortAttendanceRecords(allRecords);
+    const total = sortedRecords.length;
+    const present = sortedRecords.filter((r) => r.status === "P").length;
+    const od = sortedRecords.filter((r) => r.status === "OD").length;
+    const absent = sortedRecords.filter((r) => r.status === "A").length;
+    const attendancePercentage = total > 0 ? Math.round(((present + od) / total) * 100) : 0;
+
+    await Event.findOneAndUpdate(
+      { $or: [{ id: eventId }, { _id: mongoose.isValidObjectId(eventId) ? eventId : null }] },
+      {
+        $set: {
+          attendance: attendancePercentage,
+          actualParticipants: present + od > 0 ? present + od : total,
+        },
+      }
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: `Student ${cleanName} (${cleanReg}) added successfully`,
+      data: {
+        eventId,
+        summary: { total, present, absent, od, attendancePercentage },
+        records: sortedRecords,
+      },
+    });
+  } catch (error) {
+    console.error("Add student failed:", error.message);
+    return res.status(500).json({ success: false, message: error.message || "Failed to add student" });
+  }
+};
+
 const getEventAttendance = async (req, res) => {
   try {
     const { eventId } = req.params;
@@ -165,24 +266,35 @@ const saveEventAttendance = async (req, res) => {
       return res.status(400).json({ success: false, message: "Event ID and records array are required" });
     }
 
-    const bulkOps = records.map((rec) => ({
-      updateOne: {
-        filter: { eventId, regNo: String(rec.regNo).trim().toUpperCase() },
-        update: {
-          $set: {
-            studentName: rec.studentName || rec.name,
-            className: rec.className || rec.class || "",
-            department: rec.department || "",
-            status: rec.status || "",
-            checkInMethod: rec.checkInMethod || "online",
-            markedAt: rec.markedAt || new Date(),
-            markedBy: req.user?._id || null,
-            remarks: rec.remarks || "",
-          },
+    const bulkOps = records.map((rec) => {
+      let validDate = new Date();
+      if (rec.markedAt) {
+        const parsedDate = new Date(rec.markedAt);
+        if (!isNaN(parsedDate.getTime())) validDate = parsedDate;
+      }
+
+      const updateData = {
+        studentName: rec.studentName || rec.name,
+        className: rec.className || rec.class || "",
+        department: rec.department || "",
+        status: rec.status || "",
+        checkInMethod: rec.checkInMethod || "online",
+        markedAt: validDate,
+        remarks: rec.remarks || "",
+      };
+
+      if (req.user?._id && mongoose.Types.ObjectId.isValid(req.user._id)) {
+        updateData.markedBy = req.user._id;
+      }
+
+      return {
+        updateOne: {
+          filter: { eventId, regNo: String(rec.regNo).trim().toUpperCase() },
+          update: { $set: updateData },
+          upsert: true,
         },
-        upsert: true,
-      },
-    }));
+      };
+    });
 
     if (bulkOps.length > 0) {
       await Attendance.bulkWrite(bulkOps);
@@ -1185,6 +1297,7 @@ module.exports = {
   exportAttendance,
   importEventAttendanceRoster,
   scanHardCopyAttendance,
+  addStudentToAttendance,
 };
 
 
