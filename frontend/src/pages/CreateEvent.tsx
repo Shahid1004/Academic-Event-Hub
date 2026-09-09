@@ -22,7 +22,7 @@ export default function CreateEvent({ navigate }: CreateEventProps) {
   const [targetYears, setTargetYears] = useState<number[]>([]);
 
   useEffect(() => {
-    getUsers().then(users => setFacultyUsers(users.filter(user => ['admin', 'hod', 'coordinator', 'faculty'].includes(user.role) && user.active))).catch(() => undefined);
+    getUsers().then(users => setFacultyUsers(users.filter(user => user.active))).catch(() => undefined);
   }, []);
 
   const update = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
@@ -53,8 +53,9 @@ export default function CreateEvent({ navigate }: CreateEventProps) {
         status: action === 'draft' ? 'Draft' : 'Upcoming',
       });
       navigate('all-events');
-    } catch {
-      setError('Unable to save the event. Check the backend connection and your permissions.');
+    } catch (err: any) {
+      const serverMsg = err.response?.data?.message || err.message || 'Unable to save the event. Check the backend connection and your permissions.';
+      setError(serverMsg);
     } finally {
       setSaving(false);
     }
@@ -192,7 +193,7 @@ export default function CreateEvent({ navigate }: CreateEventProps) {
                     </label>
                   ))}
                 </div>
-              ) : <p className="text-xs text-slate-400">No active coordinators available for assignment.</p>}
+              ) : <p className="text-xs text-slate-400">No active users available for assignment.</p>}
             </div>
             <div className="sm:col-span-2">
               <label className={labelCls}>Additional coordinator names</label>

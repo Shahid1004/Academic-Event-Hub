@@ -1,7 +1,27 @@
+const mongoose = require("mongoose");
 const Event = require("../models/Event");
 const User = require("../models/User");
 
 const allowedDepartments = ["IT", "AIDS", "BOTH"];
+
+const normalizeDepartment = (dept) => {
+  if (!dept) return "";
+  const s = dept.toString().trim().toUpperCase();
+  if (s === "BOTH" || s.includes("BOTH") || (s.includes("IT") && s.includes("AIDS"))) return "BOTH";
+  if (s === "AIDS" || s.includes("AIDS") || s.includes("AI & DATA")) return "AIDS";
+  if (s === "IT" || s.includes("IT") || s.includes("INFORMATION TECHNOLOGY")) return "IT";
+  return s;
+};
+
+const parseEventDate = (d) => {
+  if (!d) return null;
+  if (d instanceof Date) return d;
+  const s = d.toString().trim();
+  if (!s) return null;
+  const isoStr = s.includes("T") ? s : `${s}T00:00:00.000Z`;
+  const dateObj = new Date(isoStr);
+  return Number.isNaN(dateObj.getTime()) ? null : dateObj;
+};
 
 const listEvents = async (req, res) => {
   try {
@@ -9,7 +29,7 @@ const listEvents = async (req, res) => {
     const { search, department, type, academicYear, fromDate, toDate } = req.query;
 
     if (department && department !== "ALL") {
-      const value = department.toString().toUpperCase();
+      const value = normalizeDepartment(department);
       if (!allowedDepartments.includes(value)) {
         return res.status(400).json({ success: false, message: "Invalid department" });
       }
@@ -19,7 +39,7 @@ const listEvents = async (req, res) => {
     if (academicYear && academicYear !== "ALL") filter.academicYear = academicYear.toString();
     if (fromDate || toDate) {
       filter.date = {};
-      if (fromDate) filter.date.$gte = new Date(`${fromDate}T00:00:00.000Z`);
+      if (fromDate) filter.date.$gte = parseEventDate(fromDate) || new Date(`${fromDate}T00:00:00.000Z`);
       if (toDate) filter.date.$lte = new Date(`${toDate}T23:59:59.999Z`);
     }
     if (search?.trim()) {
@@ -42,7 +62,7 @@ const listCalendarEvents = async (req, res) => {
     const filter = {};
 
     if (department && department !== "ALL") {
-      const value = department.toString().toUpperCase();
+      const value = normalizeDepartment(department);
       if (!allowedDepartments.includes(value)) {
         return res.status(400).json({ success: false, message: "Invalid department" });
       }
@@ -53,8 +73,8 @@ const listCalendarEvents = async (req, res) => {
     if (fromDate || toDate) {
       filter.date = {};
       if (fromDate) {
-        const startDate = new Date(`${fromDate}T00:00:00.000Z`);
-        if (Number.isNaN(startDate.getTime())) {
+        const startDate = parseEventDate(fromDate);
+        if (!startDate) {
           return res.status(400).json({ success: false, message: "Invalid fromDate" });
         }
         filter.date.$gte = startDate;
@@ -79,35 +99,43 @@ const listCalendarEvents = async (req, res) => {
 const createEvent = async (req, res) => {
   try {
     const { name, type, department, date, dateTo } = req.body;
-    if (!name?.trim() || !type?.trim() || !allowedDepartments.includes(department) || !date) {
+    const normalizedDept = normalizeDepartment(department);
+
+    if (!name?.trim() || !type?.trim() || !allowedDepartments.includes(normalizedDept) || !date) {
       return res.status(400).json({ success: false, message: "Name, type, department, and date are required" });
     }
 
-    const assignedFaculty = Array.isArray(req.body.assignedFaculty) ? [...new Set(req.body.assignedFaculty)] : [];
-    const endDate = new Date(`${dateTo || date}T00:00:00.000Z`);
-    const startDate = new Date(`${date}T00:00:00.000Z`);
-    if (Number.isNaN(endDate.getTime()) || endDate < startDate) {
+    const startDate = parseEventDate(date);
+    if (!startDate) {
+      return res.status(400).json({ success: false, message: "Invalid event date" });
+    }
+
+    const endDate = parseEventDate(dateTo) || startDate;
+    if (!endDate || endDate < startDate) {
       return res.status(400).json({ success: false, message: "Date To must be the same as or after Date From" });
     }
-    const targetYears = Array.isArray(req.body.targetYears) ? [...new Set(req.body.targetYears.map(Number))] : [];
-    if (targetYears.some(year => !Number.isInteger(year) || year < 1 || year > 4)) {
-      return res.status(400).json({ success: false, message: "Student years must be between 1 and 4" });
-    }
-    if (assignedFaculty.length) {
+
+    const targetYears = Array.isArray(req.body.targetYears)
+      ? [...new Set(req.body.targetYears.map(Number).filter(y => Number.isInteger(y) && y >= 1 && y <= 4))]
+      : [];
+
+    const rawAssigned = Array.isArray(req.body.assignedFaculty) ? req.body.assignedFaculty : [];
+    const validObjectIds = [...new Set(rawAssigned.filter(id => id && mongoose.Types.ObjectId.isValid(id)))];
+
+    let assignedFaculty = [];
+    if (validObjectIds.length) {
       const coordinatorUsers = await User.find({
-        _id: { $in: assignedFaculty },
-        role: { $in: ["admin", "hod", "coordinator", "faculty"] },
+        _id: { $in: validObjectIds },
         active: true
-      }).select("name");
-      if (coordinatorUsers.length !== assignedFaculty.length) {
-        return res.status(400).json({ success: false, message: "Every assigned coordinator must be an active user" });
-      }
+      }).select("_id");
+      assignedFaculty = coordinatorUsers.map(u => u._id);
     }
 
     const event = await Event.create({
       ...req.body,
       id: `EVT-${Date.now()}`,
-      date: new Date(`${date}T00:00:00.000Z`),
+      department: normalizedDept,
+      date: startDate,
       dateTo: endDate,
       actualParticipants: Number(req.body.actualParticipants || 0),
       expectedParticipants: Number(req.body.expectedParticipants || 0),
