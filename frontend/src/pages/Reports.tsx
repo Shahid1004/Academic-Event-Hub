@@ -40,142 +40,251 @@ export default function Reports({ academicYear = '' }: ReportsProps) {
   };
 
   const reportTypes = [
-    { id: 'individual', label: 'Individual Event Report', desc: 'Detailed report for a specific event', icon: '📄' },
-    { id: 'department', label: 'Department Event Report', desc: 'All events for a department', icon: '🏢' },
-    { id: 'semester', label: 'Semester Report', desc: 'Summary for the entire semester', icon: '📚' },
-    { id: 'annual', label: 'Academic Year Report', desc: 'Annual comprehensive report', icon: '📅' },
-    { id: 'combined', label: 'Combined IT + AIDS Report', desc: 'Joint department report', icon: '🔗' },
+    {
+      id: 'individual',
+      label: 'Individual Event Report',
+      desc: 'NAAC compliant detailed event summary report with photo proof & attendance',
+      icon: (
+        <svg className="w-6 h-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      )
+    },
+    {
+      id: 'department',
+      label: 'Departmental Annual Dossier',
+      desc: 'Consolidated performance overview for IT or AIDS department events',
+      icon: (
+        <svg className="w-6 h-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5m0 0h5m-5 0V11m0 0H9m4 0h2" />
+        </svg>
+      )
+    },
+    {
+      id: 'semester',
+      label: 'Semester Summary Booklet',
+      desc: 'Odd / Even semester curriculum audit report for accreditation bodies',
+      icon: (
+        <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+        </svg>
+      )
+    },
+    {
+      id: 'annual',
+      label: 'Academic Year Master Report',
+      desc: 'Comprehensive annual statistical analysis and event registry report',
+      icon: (
+        <svg className="w-6 h-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      )
+    },
+    {
+      id: 'combined',
+      label: 'Joint IT + AI/DS Event Report',
+      desc: 'Collaborative events report covering inter-departmental activities',
+      icon: (
+        <svg className="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+        </svg>
+      )
+    },
   ];
 
+  const inputCls = "w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500";
+  const labelCls = "text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1 block";
+
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-6 space-y-6">
+      {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold font-heading text-slate-900">Reports Module</h1>
-        <p className="text-slate-500 text-sm">Generate and download academic event reports</p>
+        <h1 className="text-2xl font-bold font-heading text-slate-900 tracking-tight">Institutional Reports Module</h1>
+        <p className="text-slate-500 text-sm mt-0.5 font-medium">Generate NAAC & NBA compliant documentation and consolidated reports</p>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-        <h3 className="font-semibold text-slate-700 mb-3">Filter Events for Report</h3>
+      {/* Filter Section */}
+      <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <h3 className="font-bold font-heading text-slate-900 text-sm">Scope Filter Criteria</h3>
+          <span className="text-xs font-medium text-slate-500">
+            Matching Events: <span className="text-indigo-600 font-bold">{filtered.length}</span>
+          </span>
+        </div>
+
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">Academic Year</label>
-            <select value={yearFilter} onChange={e => setYearFilter(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+            <label className={labelCls}>Academic Year</label>
+            <select value={yearFilter} onChange={e => setYearFilter(e.target.value)} className={inputCls}>
               <option value="ALL">All Years</option>
-              {academicYears.map(y => <option key={y}>{y}</option>)}
+              {academicYears.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
+
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">Semester</label>
-            <select value={semFilter} onChange={e => setSemFilter(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+            <label className={labelCls}>Semester</label>
+            <select value={semFilter} onChange={e => setSemFilter(e.target.value)} className={inputCls}>
               <option value="ALL">All Semesters</option>
-              <option value="I">Odd semester</option>
-              <option value="II">Even semester</option>
+              <option value="I">Odd Semester (I)</option>
+              <option value="II">Even Semester (II)</option>
             </select>
           </div>
+
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">Department</label>
-            <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400">
-              <option value="ALL">All</option>
+            <label className={labelCls}>Department</label>
+            <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className={inputCls}>
+              <option value="ALL">All Departments</option>
               <option value="IT">IT</option>
               <option value="AIDS">AIDS</option>
-              <option value="BOTH">BOTH</option>
+              <option value="BOTH">BOTH (IT+AIDS)</option>
             </select>
           </div>
+
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">Event Type</label>
-            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400">
-              <option value="ALL">All Types</option>
-              {eventTypes.map(t => <option key={t}>{t}</option>)}
+            <label className={labelCls}>Event Type</label>
+            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className={inputCls}>
+              <option value="ALL">All Event Types</option>
+              {eventTypes.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
+
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">Date From</label>
-            <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+            <label className={labelCls}>Date From</label>
+            <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className={inputCls} />
           </div>
+
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">Date To</label>
-            <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+            <label className={labelCls}>Date To</label>
+            <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className={inputCls} />
           </div>
+
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">Coordinator</label>
-            <input value={coordinatorFilter} onChange={e => setCoordinatorFilter(e.target.value)} placeholder="Search coordinator..." className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+            <label className={labelCls}>Coordinator Name</label>
+            <input value={coordinatorFilter} onChange={e => setCoordinatorFilter(e.target.value)} placeholder="Filter by faculty..." className={inputCls} />
           </div>
+
           <div>
-            <label className="text-xs text-slate-500 mb-1 block">Report Status</label>
-            <select value={reportStatusFilter} onChange={e => setReportStatusFilter(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400">
-              <option value="ALL">All</option>
-              <option>Not Generated</option>
-              <option>Draft</option>
-              <option>Generated</option>
-              <option>Approved</option>
+            <label className={labelCls}>Report Audit Status</label>
+            <select value={reportStatusFilter} onChange={e => setReportStatusFilter(e.target.value)} className={inputCls}>
+              <option value="ALL">All Statuses</option>
+              <option value="Not Generated">Not Generated</option>
+              <option value="Draft">Draft</option>
+              <option value="Generated">Generated</option>
+              <option value="Approved">Approved</option>
             </select>
           </div>
         </div>
-        <div className="mt-3 text-sm text-slate-500">{filtered.length} events match your filters</div>
       </div>
 
-      {/* Generate Report Cards */}
+      {/* Report Action Cards */}
       <div>
-        <h3 className="font-bold font-heading text-slate-800 mb-3">Generate Reports</h3>
+        <h3 className="font-bold font-heading text-slate-900 text-sm mb-3">Available Institutional Reports</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {reportTypes.map(rt => (
-            <div key={rt.id} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 hover:border-indigo-200 hover:shadow-md transition-all">
-              <div className="text-3xl mb-3">{rt.icon}</div>
-              <h4 className="font-bold font-heading text-slate-800">{rt.label}</h4>
-              <p className="text-sm text-slate-500 mt-1 mb-4">{rt.desc}</p>
-              <div className="flex gap-2">
+            <div key={rt.id} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 hover:border-indigo-300 transition-all group flex flex-col justify-between">
+              <div>
+                <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center mb-3.5 group-hover:scale-105 transition-transform">
+                  {rt.icon}
+                </div>
+                <h4 className="font-bold font-heading text-slate-900 text-sm">{rt.label}</h4>
+                <p className="text-xs text-slate-500 mt-1 mb-4 leading-relaxed">{rt.desc}</p>
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-slate-100">
                 <button
                   onClick={() => handleGenerate(rt.id)}
                   disabled={generating === rt.id}
-                  className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium disabled:opacity-60"
+                  className="flex-1 py-2 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white rounded-xl text-xs font-semibold shadow-sm transition-all disabled:opacity-60"
                 >
                   {generating === rt.id ? (
                     <span className="flex items-center justify-center gap-1.5">
-                      <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Generating...
+                      <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Compiling...
                     </span>
-                  ) : 'Generate'}
+                  ) : 'Generate Report'}
                 </button>
-                <button className="px-3 py-2 border border-slate-200 text-slate-600 rounded-xl text-sm hover:bg-slate-50">Preview</button>
+                <button className="px-3 py-2 border border-slate-200 hover:border-slate-300 text-slate-700 rounded-xl text-xs font-semibold bg-slate-50 hover:bg-slate-100 transition-all">
+                  Preview
+                </button>
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Events Table */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-bold font-heading text-slate-800">Events in Scope ({filtered.length})</h3>
+      {/* Scope Table */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold font-heading text-slate-900 text-sm">Events Included in Active Scope ({filtered.length})</h3>
           <div className="flex gap-2">
-            <button className="text-sm border border-green-200 text-green-700 px-3 py-1.5 rounded-xl hover:bg-green-50">📥 Download PDF</button>
-            <button className="text-sm border border-blue-200 text-blue-700 px-3 py-1.5 rounded-xl hover:bg-blue-50">🖨️ Print</button>
+            <button className="text-xs font-semibold border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Batch PDF Export
+            </button>
           </div>
         </div>
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs text-left">
               <thead>
-                <tr className="border-b border-slate-100 bg-slate-50">
-                  {['ID', 'Event Name', 'Type', 'Dept', 'Date', 'Participants', 'Doc Status', 'Report Status'].map(h => (
-                    <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                <tr className="border-b border-slate-100 bg-slate-50/80">
+                  {['Event ID', 'Title', 'Type', 'Dept', 'Date', 'Participants', 'Doc Status', 'Report Status'].map(h => (
+                    <th key={h} className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody>
-                {filtered.map((e, i) => (
-                  <tr key={e.id} className={`border-b border-slate-50 hover:bg-slate-50 ${i % 2 === 0 ? '' : 'bg-slate-50/20'}`}>
-                    <td className="px-4 py-3 font-mono text-xs text-slate-500">{e.id}</td>
-                    <td className="px-4 py-3 font-medium text-slate-800">{e.name}</td>
-                    <td className="px-4 py-3 text-slate-500 text-xs">{e.type}</td>
-                    <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${e.department === 'IT' ? 'bg-blue-100 text-blue-700' : e.department === 'AIDS' ? 'bg-violet-100 text-violet-700' : 'bg-amber-100 text-amber-700'}`}>{e.department}</span></td>
-                    <td className="px-4 py-3 text-slate-600 text-xs whitespace-nowrap">{e.date}</td>
-                    <td className="px-4 py-3 text-slate-700">{e.actualParticipants || '—'}</td>
-                    <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${e.docStatus === 'Completed' ? 'bg-green-100 text-green-700' : e.docStatus === 'Partial' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'}`}>{e.docStatus}</span></td>
-                    <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${e.reportStatus === 'Approved' ? 'bg-green-100 text-green-700' : e.reportStatus === 'Generated' ? 'bg-blue-100 text-blue-700' : e.reportStatus === 'Draft' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>{e.reportStatus}</span></td>
+              <tbody className="divide-y divide-slate-100">
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="text-center py-10 text-slate-400">
+                      No events matched the current filter scope.
+                    </td>
                   </tr>
-                ))}
+                ) : (
+                  filtered.map((e, i) => (
+                    <tr key={e.id} className={`hover:bg-indigo-50/30 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}`}>
+                      <td className="px-4 py-3 font-mono text-[11px] text-slate-400">{e.id}</td>
+                      <td className="px-4 py-3 font-semibold text-slate-800">{e.name}</td>
+                      <td className="px-4 py-3 text-slate-500">{e.type}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          e.department === 'IT' ? 'bg-blue-50 text-blue-700' :
+                          e.department === 'AIDS' ? 'bg-purple-50 text-purple-700' :
+                          'bg-amber-50 text-amber-700'
+                        }`}>
+                          {e.department}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{e.date}</td>
+                      <td className="px-4 py-3 text-slate-900 font-bold">{e.actualParticipants || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                          e.docStatus === 'Completed' ? 'bg-emerald-50 text-emerald-700' :
+                          e.docStatus === 'Partial' ? 'bg-amber-50 text-amber-700' :
+                          'bg-rose-50 text-rose-700'
+                        }`}>
+                          {e.docStatus}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                          e.reportStatus === 'Approved' ? 'bg-emerald-50 text-emerald-700' :
+                          e.reportStatus === 'Generated' ? 'bg-blue-50 text-blue-700' :
+                          e.reportStatus === 'Draft' ? 'bg-amber-50 text-amber-700' :
+                          'bg-slate-100 text-slate-600'
+                        }`}>
+                          {e.reportStatus}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

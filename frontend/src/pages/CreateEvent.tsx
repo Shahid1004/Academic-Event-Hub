@@ -54,210 +54,298 @@ export default function CreateEvent({ navigate }: CreateEventProps) {
       });
       navigate('all-events');
     } catch (err: any) {
-      const serverMsg = err.response?.data?.message || err.message || 'Unable to save the event. Check the backend connection and your permissions.';
+      const serverMsg = err.response?.data?.message || err.message || 'Unable to save the event. Check backend connection and permissions.';
       setError(serverMsg);
     } finally {
       setSaving(false);
     }
   };
 
-  const inputCls = "w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-slate-50";
-  const labelCls = "block text-xs font-medium text-slate-600 mb-1";
+  const inputCls = "w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-800 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:text-slate-400";
+  const labelCls = "block text-xs font-semibold text-slate-700 mb-1.5";
 
   return (
-    <div className="p-6 max-w-4xl">
-      <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => navigate('all-events')} className="text-sm text-slate-500 hover:text-slate-800">← Back</button>
+    <div className="p-6 max-w-5xl space-y-6">
+      {/* Header Bar */}
+      <div className="flex items-center gap-4 pb-4 border-b border-slate-200/80">
+        <button
+          onClick={() => navigate('all-events')}
+          className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
+          title="Back to All Events"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+        </button>
         <div>
-          <h1 className="text-2xl font-bold font-heading text-slate-900">Create / Assign Event</h1>
-          <p className="text-slate-500 text-sm">Fill in event details to create a new academic event</p>
+          <h1 className="text-2xl font-bold font-heading text-slate-900 tracking-tight">Create Academic Event</h1>
+          <p className="text-slate-500 text-xs font-medium mt-0.5">Define event specifications, schedules, coordinators, and guest speaker information</p>
         </div>
       </div>
 
-      <div className="space-y-5">
-        {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-        {/* Basic Info */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-          <h3 className="font-bold font-heading text-slate-800 mb-4">Basic Information</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="sm:col-span-2">
-              <label className={labelCls}>Event Name *</label>
-              <input value={form.name} onChange={update('name')} placeholder="e.g., Web Development Workshop" className={inputCls} />
+      {error && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-700 flex items-start gap-2.5 shadow-sm">
+          <svg className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>{error}</span>
+        </div>
+      )}
+
+      <div className="space-y-6">
+        {/* Section 1: Basic Info */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/80 space-y-4">
+          <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs">
+              01
             </div>
+            <h3 className="font-bold font-heading text-slate-900 text-sm">General Event Metadata</h3>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="sm:col-span-2 lg:col-span-4">
+              <label className={labelCls}>Event Title <span className="text-rose-500">*</span></label>
+              <input value={form.name} onChange={update('name')} placeholder="e.g., International Symposium on Generative AI" className={inputCls} />
+            </div>
+
             <div>
-              <label className={labelCls}>Event Type *</label>
+              <label className={labelCls}>Event Category <span className="text-rose-500">*</span></label>
               <select value={form.type} onChange={update('type')} className={inputCls}>
-                {eventTypes.map(t => <option key={t}>{t}</option>)}
+                {eventTypes.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
+
             <div>
-              <label className={labelCls}>Department *</label>
+              <label className={labelCls}>Organizing Department <span className="text-rose-500">*</span></label>
               <select value={form.department} onChange={update('department')} className={inputCls}>
                 <option value="IT">Information Technology (IT)</option>
                 <option value="AIDS">AI & Data Science (AIDS)</option>
-                <option value="BOTH">BOTH – IT + AIDS</option>
+                <option value="BOTH">Joint (IT + AIDS)</option>
               </select>
             </div>
+
             <div>
               <label className={labelCls}>Academic Year</label>
               <select value={form.academicYear} onChange={update('academicYear')} className={inputCls}>
-                {['2023-24', '2024-25', '2025-26', '2026-27'].map(y => <option key={y}>{y}</option>)}
+                {['2023-24', '2024-25', '2025-26', '2026-27'].map(y => <option key={y} value={y}>{y}</option>)}
               </select>
             </div>
+
             <div>
               <label className={labelCls}>Semester</label>
               <select value={form.semester} onChange={update('semester')} className={inputCls}>
-                <option value="I">Odd semester</option>
-                <option value="II">Even semester</option>
+                <option value="I">Odd Semester (I)</option>
+                <option value="II">Even Semester (II)</option>
               </select>
             </div>
           </div>
         </div>
 
-        {/* Date & Venue */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-          <h3 className="font-bold font-heading text-slate-800 mb-4">Date, Time & Venue</h3>
+        {/* Section 2: Date, Time & Venue */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/80 space-y-4">
+          <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs">
+              02
+            </div>
+            <h3 className="font-bold font-heading text-slate-900 text-sm">Schedule & Logistics</h3>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
-              <label className={labelCls}>Event Date *</label>
+              <label className={labelCls}>Start Date <span className="text-rose-500">*</span></label>
               <input type="date" value={form.date} onChange={update('date')} className={inputCls} />
             </div>
+
             <div>
-              <label className={labelCls}>Date To</label>
+              <label className={labelCls}>End Date</label>
               <input type="date" min={form.date} value={form.dateTo} onChange={update('dateTo')} className={inputCls} />
             </div>
+
             <div>
               <label className={labelCls}>Start Time</label>
               <input type="time" value={form.startTime} onChange={update('startTime')} className={inputCls} />
             </div>
+
             <div>
               <label className={labelCls}>End Time</label>
               <input type="time" value={form.endTime} onChange={update('endTime')} className={inputCls} />
             </div>
+
             <div>
-              <label className={labelCls}>Mode</label>
+              <label className={labelCls}>Delivery Mode</label>
               <select value={form.mode} onChange={update('mode')} className={inputCls}>
                 <option>Offline</option>
                 <option>Online</option>
                 <option>Hybrid</option>
               </select>
             </div>
+
             <div className="sm:col-span-2">
-              <label className={labelCls}>Venue</label>
-              <input value={form.venue} onChange={update('venue')} placeholder="e.g., Seminar Hall A, IT Block" className={inputCls} />
+              <label className={labelCls}>Venue / Location</label>
+              <input value={form.venue} onChange={update('venue')} placeholder="e.g., APJ Abdul Kalam Auditorium, IT Block" className={inputCls} />
             </div>
-            <div className="sm:col-span-2">
-              <label className={labelCls}>Target Year/Students</label>
-              <input value={form.targetStudents} onChange={update('targetStudents')} placeholder="e.g., III Year IT, All AIDS Students" className={inputCls} />
+
+            <div>
+              <label className={labelCls}>Sponsored / Funding Body</label>
+              <input value={form.sponsoredBy} onChange={update('sponsoredBy')} placeholder="e.g., AICTE / Management" className={inputCls} />
             </div>
+
             <div className="sm:col-span-2">
-              <label className={labelCls}>Sponsored By</label>
-              <input value={form.sponsoredBy} onChange={update('sponsoredBy')} placeholder="Organization or department" className={inputCls} />
+              <label className={labelCls}>Target Audience Description</label>
+              <input value={form.targetStudents} onChange={update('targetStudents')} placeholder="e.g., III & IV Year B.Tech Students" className={inputCls} />
             </div>
+
             <div className="sm:col-span-2">
-              <label className={labelCls}>Student Year(s) *</label>
-              <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 p-3 bg-slate-50">
+              <label className={labelCls}>Target Student Year(s)</label>
+              <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200/80 p-3 bg-slate-50/50">
                 {[1, 2, 3, 4].map(year => (
-                  <label key={year} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer ${targetYears.includes(year) ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600'}`}>
-                    <input type="checkbox" checked={targetYears.includes(year)} onChange={event => setTargetYears(current => event.target.checked ? [...current, year] : current.filter(value => value !== year))} className="h-4 w-4 accent-indigo-600" />
+                  <label key={year} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-all ${
+                    targetYears.includes(year) ? 'border-indigo-500 bg-indigo-50 text-indigo-700 font-semibold' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={targetYears.includes(year)}
+                      onChange={event => setTargetYears(current => event.target.checked ? [...current, year] : current.filter(v => v !== year))}
+                      className="h-3.5 w-3.5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                    />
                     Year {year}
                   </label>
                 ))}
               </div>
-              <p className="text-xs text-slate-400 mt-1">Select one or more years.</p>
             </div>
           </div>
         </div>
 
-        {/* Coordinators */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-          <h3 className="font-bold font-heading text-slate-800 mb-4">Coordinators</h3>
+        {/* Section 3: Faculty Coordinators */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/80 space-y-4">
+          <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs">
+              03
+            </div>
+            <h3 className="font-bold font-heading text-slate-900 text-sm">Faculty Coordinators & Attendance Expectation</h3>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className={labelCls}>Expected Participants</label>
-              <input type="number" value={form.expectedParticipants} onChange={update('expectedParticipants')} placeholder="e.g., 60" className={inputCls} />
+              <label className={labelCls}>Expected Participant Count</label>
+              <input type="number" value={form.expectedParticipants} onChange={update('expectedParticipants')} placeholder="e.g., 120" className={inputCls} />
             </div>
+
             <div className="sm:col-span-2">
-              <label className={labelCls}>Event Coordinators (select one or more)</label>
+              <label className={labelCls}>Assign Registered Faculty Coordinators</label>
               {facultyUsers.length ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-xl border border-slate-200 p-3 bg-slate-50">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 rounded-xl border border-slate-200/80 p-3 bg-slate-50/50">
                   {facultyUsers.map(user => (
-                    <label key={user.id} className="flex items-center gap-2 text-sm text-slate-700">
+                    <label key={user.id} className={`flex items-center gap-2.5 p-2 rounded-lg border text-xs cursor-pointer transition-all ${
+                      assignedFaculty.includes(user.id) ? 'border-indigo-400 bg-indigo-50/80 text-indigo-900 font-semibold' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                    }`}>
                       <input
                         type="checkbox"
                         checked={assignedFaculty.includes(user.id)}
                         onChange={event => setAssignedFaculty(current => event.target.checked ? [...current, user.id] : current.filter(id => id !== user.id))}
-                        className="h-4 w-4 accent-indigo-600"
+                        className="h-3.5 w-3.5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
                       />
-                      <span>{user.name} <span className="text-xs text-slate-400">({user.department})</span></span>
+                      <span className="truncate">{user.name} <span className="text-[10px] text-slate-400">({user.department})</span></span>
                     </label>
                   ))}
                 </div>
-              ) : <p className="text-xs text-slate-400">No active users available for assignment.</p>}
+              ) : <p className="text-xs text-slate-400 font-medium">No registered faculty available for assignment.</p>}
             </div>
+
             <div className="sm:col-span-2">
-              <label className={labelCls}>Additional coordinator names</label>
-              <input value={form.additionalCoordinators} onChange={update('additionalCoordinators')} placeholder="Add names separated by commas" className={inputCls} />
+              <label className={labelCls}>External / Additional Coordinator Names</label>
+              <input value={form.additionalCoordinators} onChange={update('additionalCoordinators')} placeholder="Comma-separated list (e.g., Dr. R. Kumar, Prof. S. Priya)" className={inputCls} />
             </div>
           </div>
         </div>
 
-        {/* Resource Person */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-          <h3 className="font-bold font-heading text-slate-800 mb-4">Resource Person / Guest Speaker</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className={labelCls}>Name</label>
-              <input value={form.rpName} onChange={update('rpName')} placeholder="Mr./Dr. Full Name" className={inputCls} />
+        {/* Section 4: Resource Person Details */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/80 space-y-4">
+          <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs">
+              04
             </div>
+            <h3 className="font-bold font-heading text-slate-900 text-sm">Resource Person / Keynote Speaker</h3>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <label className={labelCls}>Speaker Full Name</label>
+              <input value={form.rpName} onChange={update('rpName')} placeholder="Dr. Johnathan Smith" className={inputCls} />
+            </div>
+
             <div>
               <label className={labelCls}>Designation</label>
-              <input value={form.rpDesignation} onChange={update('rpDesignation')} placeholder="e.g., Senior Engineer" className={inputCls} />
+              <input value={form.rpDesignation} onChange={update('rpDesignation')} placeholder="Principal Architect / Professor" className={inputCls} />
             </div>
+
             <div>
-              <label className={labelCls}>Organization</label>
-              <input value={form.rpOrganization} onChange={update('rpOrganization')} placeholder="e.g., Infosys, IIT Madras" className={inputCls} />
+              <label className={labelCls}>Affiliated Organization</label>
+              <input value={form.rpOrganization} onChange={update('rpOrganization')} placeholder="Microsoft Research / IIT B" className={inputCls} />
             </div>
+
             <div>
-              <label className={labelCls}>Contact</label>
-              <input value={form.rpContact} onChange={update('rpContact')} placeholder="10-digit mobile number" className={inputCls} />
+              <label className={labelCls}>Contact Phone</label>
+              <input value={form.rpContact} onChange={update('rpContact')} placeholder="+91 9876543210" className={inputCls} />
             </div>
+
             <div className="sm:col-span-2">
-              <label className={labelCls}>Email</label>
-              <input type="email" value={form.rpEmail} onChange={update('rpEmail')} placeholder="email@organization.com" className={inputCls} />
+              <label className={labelCls}>Speaker Email Address</label>
+              <input type="email" value={form.rpEmail} onChange={update('rpEmail')} placeholder="speaker@institution.org" className={inputCls} />
             </div>
           </div>
         </div>
 
-        {/* Objective & Description */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-          <h3 className="font-bold font-heading text-slate-800 mb-4">Event Details</h3>
+        {/* Section 5: Description & Notes */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/80 space-y-4">
+          <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs">
+              05
+            </div>
+            <h3 className="font-bold font-heading text-slate-900 text-sm">Objectives & Additional Documentation</h3>
+          </div>
+
           <div className="space-y-4">
             <div>
-              <label className={labelCls}>Event Objective *</label>
-              <textarea value={form.objective} onChange={update('objective')} rows={3} placeholder="Describe the main objective of this event..." className={inputCls + ' resize-none'} />
+              <label className={labelCls}>Primary Event Objective <span className="text-rose-500">*</span></label>
+              <textarea value={form.objective} onChange={update('objective')} rows={3} placeholder="Summarize the learning outcomes, key deliverables, or workshop objectives..." className={inputCls + ' resize-none'} />
             </div>
+
             <div>
-              <label className={labelCls}>Description</label>
-              <textarea value={form.description} onChange={update('description')} rows={4} placeholder="Detailed description of event activities, agenda, etc." className={inputCls + ' resize-none'} />
+              <label className={labelCls}>Comprehensive Description / Agenda</label>
+              <textarea value={form.description} onChange={update('description')} rows={4} placeholder="Outline session-by-session breakdown, topics covered, or special instructions..." className={inputCls + ' resize-none'} />
             </div>
+
             <div>
-              <label className={labelCls}>HOD Assignment / Approval Notes</label>
-              <textarea value={form.hodAssignment} onChange={update('hodAssignment')} rows={2} placeholder="Notes from HOD for assignment..." className={inputCls + ' resize-none'} />
+              <label className={labelCls}>Department Head / HOD Directives</label>
+              <textarea value={form.hodAssignment} onChange={update('hodAssignment')} rows={2} placeholder="HOD approval notes, internal guidelines, or specific budget codes..." className={inputCls + ' resize-none'} />
             </div>
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex gap-3">
-          <button disabled={saving} onClick={() => handleSubmit('draft')} className="px-6 py-3 border border-indigo-200 text-indigo-600 font-semibold rounded-xl hover:bg-indigo-50 text-sm disabled:opacity-50">
-            💾 Save Draft
-          </button>
-          <button disabled={saving} onClick={() => handleSubmit('submit')} className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-sm shadow-sm disabled:opacity-50">
-            ✅ Submit Event
-          </button>
-          <button onClick={() => navigate('all-events')} className="px-6 py-3 border border-slate-200 text-slate-600 rounded-xl text-sm hover:bg-slate-50">
+        {/* Form Action Controls */}
+        <div className="flex items-center justify-end gap-3 pt-4">
+          <button
+            onClick={() => navigate('all-events')}
+            className="px-5 py-2.5 border border-slate-200 hover:border-slate-300 text-slate-600 text-xs font-semibold rounded-xl bg-white hover:bg-slate-50 transition-all"
+          >
             Cancel
+          </button>
+
+          <button
+            disabled={saving}
+            onClick={() => handleSubmit('draft')}
+            className="px-5 py-2.5 border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 text-xs font-semibold rounded-xl disabled:opacity-50 transition-all"
+          >
+            {saving ? 'Saving...' : 'Save Draft'}
+          </button>
+
+          <button
+            disabled={saving}
+            onClick={() => handleSubmit('submit')}
+            className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-xs font-semibold rounded-xl shadow-md shadow-indigo-500/20 disabled:opacity-50 transition-all"
+          >
+            {saving ? 'Submitting...' : 'Create & Publish Event'}
           </button>
         </div>
       </div>

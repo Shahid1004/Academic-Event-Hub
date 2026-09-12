@@ -68,10 +68,9 @@ const eventRows = (events: EventRecord[]) => events.map((event, index) => ({
 
 export default function FormalAcademicReport({ events: initialEvents = [], navigate }: FormalAcademicReportProps) {
   const [events, setEvents] = useState<EventRecord[]>(initialEvents);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getEvents().then(data => { setEvents(data); }).catch(() => setEvents([])).finally(() => setLoading(false));
+    getEvents().then(data => { setEvents(data); }).catch(() => setEvents([]));
   }, []);
 
   const availableYears = Array.from(new Set(events.map(event => event.academicYear).filter(Boolean))).sort();
@@ -140,65 +139,198 @@ export default function FormalAcademicReport({ events: initialEvents = [], navig
     }
   };
 
-  const selectClass = 'px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400';
-  const cellClass = 'px-3 py-2 border-r border-slate-100 align-top';
-  const sortLabel = (label: string, column: SortColumn) => <button type="button" onClick={() => toggleSort(column)} className="font-semibold hover:text-indigo-100 whitespace-nowrap">{label} {sortColumn === column ? (sortDirection === 'asc' ? '↑' : '↓') : '↕'}</button>;
+  const selectClass = 'px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20';
+  const cellClass = 'px-3 py-2.5 border-r border-slate-100 align-top';
+  const sortLabel = (label: string, column: SortColumn) => (
+    <button type="button" onClick={() => toggleSort(column)} className="font-semibold hover:text-indigo-200 whitespace-nowrap">
+      {label} {sortColumn === column ? (sortDirection === 'asc' ? '↑' : '↓') : '↕'}
+    </button>
+  );
 
   return (
-    <div className="p-6 space-y-5 min-h-screen bg-slate-50">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <button onClick={() => navigate('dashboard')} className="text-sm text-indigo-600 hover:text-indigo-800 mb-2">← Back to Dashboard</button>
-          <h1 className="text-3xl font-bold text-slate-900">Academic Event Report</h1>
-          <div className="text-sm text-slate-600 mt-2 space-x-4">
-            <span>Report Type: <strong>{appliedFilters.type === 'month' ? 'Monthly' : appliedFilters.type === 'semester' ? 'Semester' : 'Academic Year'}</strong></span>
-            <span>Period: <strong>{formatPeriod(appliedFilters)}</strong></span>
-            <span>Records: <strong>{displayedEvents.length}</strong></span>
-          </div>
+          <button onClick={() => navigate('dashboard')} className="text-xs text-indigo-600 font-semibold hover:underline mb-1 flex items-center gap-1">
+            &larr; Back to Dashboard
+          </button>
+          <h1 className="text-2xl font-bold font-heading text-slate-900 tracking-tight">Formal Academic Event Dossier</h1>
+          <p className="text-slate-500 text-xs mt-0.5 font-medium">
+            Scope: <strong className="text-slate-900">{formatPeriod(appliedFilters)}</strong> &bull; <strong className="text-indigo-600">{displayedEvents.length}</strong> matching records
+          </p>
         </div>
-        <button onClick={exportExcel} disabled={isExporting || displayedEvents.length === 0} className="px-5 py-2.5 bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white rounded-lg text-sm font-semibold">{isExporting ? 'Exporting...' : 'Export Excel'}</button>
+
+        <button
+          onClick={exportExcel}
+          disabled={isExporting || displayedEvents.length === 0}
+          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-sm transition-all whitespace-nowrap"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          {isExporting ? 'Exporting...' : 'Export Excel Dossier'}
+        </button>
       </div>
 
-      <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-6 gap-3">
-          <label className="text-xs font-semibold text-slate-600">Report Type<select className={`${selectClass} mt-1 w-full`} value={filters.type} onChange={event => updateFilter('type', event.target.value as ReportType)}><option value="month">Monthly Report</option><option value="semester">Semester Report</option><option value="year">Academic Year Report</option></select></label>
-          {filters.type === 'month' && <>
-            <label className="text-xs font-semibold text-slate-600">Month<select className={`${selectClass} mt-1 w-full`} value={filters.month} onChange={event => updateFilter('month', Number(event.target.value))}>{Array.from({ length: 12 }, (_, index) => <option key={index + 1} value={index + 1}>{new Date(2024, index).toLocaleString('en', { month: 'long' })}</option>)}</select></label>
-            <label className="text-xs font-semibold text-slate-600">Year<select className={`${selectClass} mt-1 w-full`} value={filters.year} onChange={event => updateFilter('year', Number(event.target.value))}>{Array.from(new Set([filters.year, ...events.map(event => new Date(event.date).getFullYear()).filter(Boolean)])).sort().map(year => <option key={year} value={year}>{year}</option>)}</select></label>
-          </>}
-          {filters.type !== 'month' && <label className="text-xs font-semibold text-slate-600">Academic Year<select className={`${selectClass} mt-1 w-full`} value={filters.academicYear} onChange={event => updateFilter('academicYear', event.target.value)}>{availableYears.map(year => <option key={year} value={year}>{year}</option>)}</select></label>}
-          {filters.type === 'semester' && <label className="text-xs font-semibold text-slate-600">Semester<select className={`${selectClass} mt-1 w-full`} value={filters.semester} onChange={event => updateFilter('semester', event.target.value as 'odd' | 'even')}><option value="odd">Odd / I</option><option value="even">Even / II</option></select></label>}
-          <label className="text-xs font-semibold text-slate-600">Department<select className={`${selectClass} mt-1 w-full`} value={filters.department} onChange={event => updateFilter('department', event.target.value)}><option value="ALL">All Departments</option>{availableDepartments.map(department => <option key={department} value={department}>{department}</option>)}</select></label>
-          <label className="text-xs font-semibold text-slate-600">Event Type<select className={`${selectClass} mt-1 w-full`} value={filters.eventType} onChange={event => updateFilter('eventType', event.target.value)}><option value="ALL">All Event Types</option>{availableTypes.map(type => <option key={type} value={type}>{type}</option>)}</select></label>
+      {/* Scope Filter Config Panel */}
+      <section className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-4">
+        <h2 className="font-bold font-heading text-slate-900 text-sm pb-2 border-b border-slate-100">Search &amp; Filter Events</h2>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Report Period</label>
+            <select className={`${selectClass} w-full`} value={filters.type} onChange={e => updateFilter('type', e.target.value as ReportType)}>
+              <option value="month">Monthly Report</option>
+              <option value="semester">Semester Report</option>
+              <option value="year">Academic Year Report</option>
+            </select>
+          </div>
+
+          {filters.type === 'month' && (
+            <>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Month</label>
+                <select className={`${selectClass} w-full`} value={filters.month} onChange={e => updateFilter('month', Number(e.target.value))}>
+                  {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{new Date(2024, i).toLocaleString('en', { month: 'long' })}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Year</label>
+                <select className={`${selectClass} w-full`} value={filters.year} onChange={e => updateFilter('year', Number(e.target.value))}>
+                  {Array.from(new Set([filters.year, ...events.map(event => new Date(event.date).getFullYear()).filter(Boolean)])).sort().map(year => <option key={year} value={year}>{year}</option>)}
+                </select>
+              </div>
+            </>
+          )}
+
+          {filters.type !== 'month' && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Academic Year</label>
+              <select className={`${selectClass} w-full`} value={filters.academicYear} onChange={e => updateFilter('academicYear', e.target.value)}>
+                {availableYears.map(year => <option key={year} value={year}>{year}</option>)}
+              </select>
+            </div>
+          )}
+
+          {filters.type === 'semester' && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Semester</label>
+              <select className={`${selectClass} w-full`} value={filters.semester} onChange={e => updateFilter('semester', e.target.value as 'odd' | 'even')}>
+                <option value="odd">Odd Semester (I)</option>
+                <option value="even">Even Semester (II)</option>
+              </select>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Department</label>
+            <select className={`${selectClass} w-full`} value={filters.department} onChange={e => updateFilter('department', e.target.value)}>
+              <option value="ALL">All Departments</option>
+              {availableDepartments.map(department => <option key={department} value={department}>{department}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Event Category</label>
+            <select className={`${selectClass} w-full`} value={filters.eventType} onChange={e => updateFilter('eventType', e.target.value)}>
+              <option value="ALL">All Event Types</option>
+              {availableTypes.map(type => <option key={type} value={type}>{type}</option>)}
+            </select>
+          </div>
         </div>
-        <div className="flex flex-wrap items-end gap-3">
-          <button onClick={generate} className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold">Generate</button>
-          <button onClick={reset} className="px-5 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-semibold">Reset</button>
+
+        <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+          <button onClick={generate} className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-all">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+            </svg>
+            Search
+          </button>
+          <button onClick={reset} className="px-4 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-semibold transition-all">
+            Reset Filters
+          </button>
         </div>
       </section>
 
-      <section className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3">
-        <div className="flex flex-wrap gap-3">
-          <input className={`${selectClass} flex-1 min-w-56`} placeholder="Search events..." value={filters.search} onChange={event => { updateFilter('search', event.target.value); setAppliedFilters(previous => ({ ...previous, search: event.target.value })); }} />
-          <select className={selectClass} value={filters.semesterFilter} onChange={event => { updateFilter('semesterFilter', event.target.value); setAppliedFilters(previous => ({ ...previous, semesterFilter: event.target.value })); }}><option value="ALL">All Semesters</option><option value="odd">Odd / I</option><option value="even">Even / II</option></select>
-          <label className="text-xs text-slate-500">From<input type="date" className={`${selectClass} ml-2`} value={filters.fromDate} onChange={event => { updateFilter('fromDate', event.target.value); setAppliedFilters(previous => ({ ...previous, fromDate: event.target.value })); }} /></label>
-          <label className="text-xs text-slate-500">To<input type="date" className={`${selectClass} ml-2`} value={filters.toDate} onChange={event => { updateFilter('toDate', event.target.value); setAppliedFilters(previous => ({ ...previous, toDate: event.target.value })); }} /></label>
-        </div>
-        <div className="text-sm font-semibold text-slate-700">Showing {displayedEvents.length} records</div>
-      </section>
-
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+      {/* Grid Data Table */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden">
+        <div className="overflow-x-auto max-h-[600px]">
           <table className="w-full text-xs border-collapse min-w-[2200px]">
-            <thead><tr className="bg-indigo-700 text-white">
-              <th className={`${cellClass} text-left`}>S.No</th><th className={`${cellClass} text-left`}>Academic Year</th><th className={`${cellClass} text-left`}>Semester</th><th className={`${cellClass} text-left`}>Department / Branch</th><th className={`${cellClass} text-left`}>Year / Class</th><th className={`${cellClass} text-left`}>Event Type</th><th className={`${cellClass} text-left`}>{sortLabel('Event Name', 'name')}</th><th className={`${cellClass} text-left`}>{sortLabel('Event Date', 'date')}</th><th className={`${cellClass} text-left`}>Time</th><th className={`${cellClass} text-left`}>Coordinator</th><th className={`${cellClass} text-left`}>Resource Person</th><th className={`${cellClass} text-left`}>Designation</th><th className={`${cellClass} text-left`}>Organization</th><th className={`${cellClass} text-left`}>Mode</th><th className={`${cellClass} text-left`}>Venue</th><th className={`${cellClass} text-left`}>Sponsored By</th><th className={`${cellClass} text-right`}>{sortLabel('Participants', 'participants')}</th><th className={`${cellClass} text-right`}>Attendance %</th><th className={`${cellClass} text-right`}>Feedback</th><th className={`${cellClass} text-left`}>Document Status</th><th className="px-3 py-2 text-left">Status</th>
-            </tr></thead>
-            <tbody>{displayedEvents.map((event, index) => <tr key={event.id} className={`border-b border-slate-100 hover:bg-indigo-50/40 ${index % 2 ? 'bg-slate-50/40' : 'bg-white'}`}>
-              <td className={cellClass}>{index + 1}</td><td className={cellClass}>{missing(event.academicYear)}</td><td className={cellClass}>{missing(event.semester)}</td><td className={cellClass}>{missing(event.department)}</td><td className={cellClass}>{missing(event.targetStudents)}</td><td className={cellClass}>{missing(event.type)}</td><td className={`${cellClass} font-medium max-w-64`}>{missing(event.name)}</td><td className={`${cellClass} whitespace-nowrap`}>{missing(event.date)}</td><td className={`${cellClass} whitespace-nowrap`}>{event.startTime && event.endTime ? `${event.startTime} - ${event.endTime}` : '—'}</td><td className={`${cellClass} max-w-56`}>{[event.coordinator, ...(event.additionalCoordinators || [])].filter(Boolean).join(', ') || '—'}</td><td className={`${cellClass} max-w-48`}>{missing(event.resourcePerson?.name)}</td><td className={`${cellClass} max-w-40`}>{missing(event.resourcePerson?.designation)}</td><td className={`${cellClass} max-w-44`}>{missing(event.resourcePerson?.organization)}</td><td className={cellClass}>{missing(event.mode)}</td><td className={`${cellClass} max-w-48`}>{missing(event.venue)}</td><td className={`${cellClass} max-w-40`}>{missing(event.sponsoredBy)}</td><td className={`${cellClass} text-right font-semibold`}>{event.actualParticipants ?? '—'}</td><td className={`${cellClass} text-right`}>{event.attendance ? `${event.attendance}%` : '—'}</td><td className={`${cellClass} text-right`}>{event.feedbackScore ? event.feedbackScore : '—'}</td><td className={cellClass}>{missing(event.docStatus)}</td><td className="px-3 py-2">{missing(event.status)}</td>
-            </tr>)}</tbody>
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-slate-900 text-white font-heading">
+                <th className={`${cellClass} text-left`}>S.No</th>
+                <th className={`${cellClass} text-left`}>Academic Year</th>
+                <th className={`${cellClass} text-left`}>Semester</th>
+                <th className={`${cellClass} text-left`}>Department</th>
+                <th className={`${cellClass} text-left`}>Year / Class</th>
+                <th className={`${cellClass} text-left`}>Event Type</th>
+                <th className={`${cellClass} text-left`}>{sortLabel('Event Name', 'name')}</th>
+                <th className={`${cellClass} text-left`}>{sortLabel('Event Date', 'date')}</th>
+                <th className={`${cellClass} text-left`}>Time</th>
+                <th className={`${cellClass} text-left`}>Coordinator</th>
+                <th className={`${cellClass} text-left`}>Resource Person</th>
+                <th className={`${cellClass} text-left`}>Designation</th>
+                <th className={`${cellClass} text-left`}>Organization</th>
+                <th className={`${cellClass} text-left`}>Mode</th>
+                <th className={`${cellClass} text-left`}>Venue</th>
+                <th className={`${cellClass} text-left`}>Sponsored By</th>
+                <th className={`${cellClass} text-right`}>{sortLabel('Participants', 'participants')}</th>
+                <th className={`${cellClass} text-right`}>Attendance %</th>
+                <th className={`${cellClass} text-right`}>Feedback</th>
+                <th className={`${cellClass} text-left`}>Doc Status</th>
+                <th className="px-3 py-2 text-left">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {displayedEvents.length === 0 ? (
+                <tr>
+                  <td colSpan={21} className="py-12 text-center text-slate-400 text-xs">
+                    No academic event records matched the specified scope parameters.
+                  </td>
+                </tr>
+              ) : (
+                displayedEvents.map((event, index) => (
+                  <tr key={event.id} className={`hover:bg-indigo-50/30 transition-colors ${index % 2 ? 'bg-slate-50/40' : 'bg-white'}`}>
+                    <td className={`${cellClass} font-mono text-[11px] text-slate-400`}>{index + 1}</td>
+                    <td className={cellClass}>{missing(event.academicYear)}</td>
+                    <td className={cellClass}>{missing(event.semester)}</td>
+                    <td className={cellClass}><span className="font-semibold text-slate-800">{missing(event.department)}</span></td>
+                    <td className={cellClass}>{missing(event.targetStudents)}</td>
+                    <td className={cellClass}>{missing(event.type)}</td>
+                    <td className={`${cellClass} font-bold text-slate-900 max-w-64 truncate`}>{missing(event.name)}</td>
+                    <td className={`${cellClass} whitespace-nowrap font-mono text-slate-700`}>{missing(event.date)}</td>
+                    <td className={`${cellClass} whitespace-nowrap text-slate-500`}>{event.startTime && event.endTime ? `${event.startTime} - ${event.endTime}` : '—'}</td>
+                    <td className={`${cellClass} max-w-56 truncate`}>{[event.coordinator, ...(event.additionalCoordinators || [])].filter(Boolean).join(', ') || '—'}</td>
+                    <td className={`${cellClass} max-w-48 truncate`}>{missing(event.resourcePerson?.name)}</td>
+                    <td className={`${cellClass} max-w-40 truncate text-slate-500`}>{missing(event.resourcePerson?.designation)}</td>
+                    <td className={`${cellClass} max-w-44 truncate text-slate-500`}>{missing(event.resourcePerson?.organization)}</td>
+                    <td className={cellClass}>{missing(event.mode)}</td>
+                    <td className={`${cellClass} max-w-48 truncate text-slate-600`}>{missing(event.venue)}</td>
+                    <td className={`${cellClass} max-w-40 text-slate-500`}>{missing(event.sponsoredBy)}</td>
+                    <td className={`${cellClass} text-right font-bold text-slate-900`}>{event.actualParticipants ?? '—'}</td>
+                    <td className={`${cellClass} text-right font-medium text-slate-700`}>{event.attendance ? `${event.attendance}%` : '—'}</td>
+                    <td className={`${cellClass} text-right`}>{event.feedbackScore ? `⭐ ${event.feedbackScore}` : '—'}</td>
+                    <td className={cellClass}>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        event.docStatus === 'Completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                      }`}>
+                        {missing(event.docStatus)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        event.status === 'Completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'
+                      }`}>
+                        {missing(event.status)}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
           </table>
         </div>
-        {displayedEvents.length === 0 && <div className="p-10 text-center text-slate-500">No events match the selected filters.</div>}
       </div>
     </div>
   );

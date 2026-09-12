@@ -1,4 +1,4 @@
-import { academicYears, eventTypes } from '../data/sampleData';
+import { academicYears } from '../data/sampleData';
 import * as XLSX from 'xlsx';
 import { useEffect, useState } from 'react';
 import type { EventRecord } from '../types';
@@ -35,7 +35,7 @@ export default function SemesterExcel({ academicYear = '' }: SemesterExcelProps)
     const dir = sortDir === 'asc' ? 1 : -1;
     if (sortCol === 'date') return a.date.localeCompare(b.date) * dir;
     if (sortCol === 'name') return a.name.localeCompare(b.name) * dir;
-    if (sortCol === 'participants') return (a.actualParticipants - b.actualParticipants) * dir;
+    if (sortCol === 'participants') return ((a.actualParticipants || 0) - (b.actualParticipants || 0)) * dir;
     return 0;
   });
 
@@ -47,8 +47,7 @@ export default function SemesterExcel({ academicYear = '' }: SemesterExcelProps)
   const handleExportExcel = async () => {
     try {
       setIsExporting(true);
-      
-      // Prepare data for export
+
       const exportData = filtered.map((e, i) => ({
         'S.No': i + 1,
         'Academic Year': e.academicYear,
@@ -60,9 +59,9 @@ export default function SemesterExcel({ academicYear = '' }: SemesterExcelProps)
         'Event Date': e.date,
         'Time': `${e.startTime}–${e.endTime}`,
         'Coordinator': e.coordinator.split(' ').slice(0, 2).join(' '),
-        'Resource Person': e.resourcePerson.name,
-        'Designation': e.resourcePerson.designation,
-        'Organization': e.resourcePerson.organization,
+        'Resource Person': e.resourcePerson?.name || '',
+        'Designation': e.resourcePerson?.designation || '',
+        'Organization': e.resourcePerson?.organization || '',
         'Mode': e.mode,
         'Venue': e.venue,
         'Participants': e.actualParticipants || '—',
@@ -72,41 +71,21 @@ export default function SemesterExcel({ academicYear = '' }: SemesterExcelProps)
         'Status': e.status,
       }));
 
-      // Create workbook and worksheet
       const ws = XLSX.utils.json_to_sheet(exportData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Events');
 
-      // Set column widths
       const colWidths = [
-        { wch: 6 },   // S.No
-        { wch: 12 },  // Academic Year
-        { wch: 10 },  // Semester
-        { wch: 12 },  // Department
-        { wch: 14 },  // Year/Class
-        { wch: 15 },  // Event Type
-        { wch: 20 },  // Event Name
-        { wch: 12 },  // Event Date
-        { wch: 16 },  // Time
-        { wch: 18 },  // Coordinator
-        { wch: 18 },  // Resource Person
-        { wch: 15 },  // Designation
-        { wch: 18 },  // Organization
-        { wch: 10 },  // Mode
-        { wch: 18 },  // Venue
-        { wch: 12 },  // Participants
-        { wch: 12 },  // Attendance %
-        { wch: 12 },  // Feedback Score
-        { wch: 12 },  // Doc Status
-        { wch: 12 },  // Status
+        { wch: 6 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 14 },
+        { wch: 15 }, { wch: 20 }, { wch: 12 }, { wch: 16 }, { wch: 18 },
+        { wch: 18 }, { wch: 15 }, { wch: 18 }, { wch: 10 }, { wch: 18 },
+        { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
       ];
       ws['!cols'] = colWidths;
 
-      // Generate filename
       const timestamp = new Date().toISOString().split('T')[0];
       const filename = `Semester-Events-${yearFilter}-${semFilter}-${timestamp}.xlsx`;
 
-      // Write file
       XLSX.writeFile(wb, filename);
     } catch (error) {
       console.error('Error exporting Excel:', error);
@@ -117,7 +96,7 @@ export default function SemesterExcel({ academicYear = '' }: SemesterExcelProps)
   };
 
   const SortIcon = ({ col }: { col: string }) => (
-    <span className="ml-1 text-slate-300">{sortCol === col ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}</span>
+    <span className="ml-1 text-indigo-200">{sortCol === col ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}</span>
   );
 
   const columns = [
@@ -143,62 +122,85 @@ export default function SemesterExcel({ academicYear = '' }: SemesterExcelProps)
     { key: 'status', label: 'Status', sortable: false },
   ];
 
+  const inputCls = "px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-800 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500";
+
   return (
-    <div className="p-6 space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold font-heading text-slate-900">Semester Event Register</h1>
-        <p className="text-slate-500 text-sm mt-0.5">Excel-style dataset of all events conducted during the semester</p>
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold font-heading text-slate-900 tracking-tight">Semester Event Master Register</h1>
+          <p className="text-slate-500 text-sm mt-0.5 font-medium">Consolidated spreadsheet data grid for departmental academic events</p>
+        </div>
+
+        <button
+          onClick={handleExportExcel}
+          disabled={isExporting || filtered.length === 0}
+          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-sm transition-all whitespace-nowrap"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          {isExporting ? 'Generating Excel...' : 'Export Consolidated Excel'}
+        </button>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
-        <div className="flex flex-wrap gap-3">
+      {/* Filter Toolbar */}
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80 space-y-3">
+        <div className="flex flex-wrap gap-2.5">
           <input
             type="text"
-            placeholder="Search events..."
+            placeholder="Search dataset..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-slate-50 min-w-44 flex-1"
+            className={inputCls + ' min-w-[200px] flex-1'}
           />
-          <select value={yearFilter} onChange={e => setYearFilter(e.target.value)} className="px-3 py-2 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400">
-            <option value="ALL">All Years</option>
-            {academicYears.map(y => <option key={y}>{y}</option>)}
+
+          <select value={yearFilter} onChange={e => setYearFilter(e.target.value)} className={inputCls}>
+            <option value="ALL">All Academic Years</option>
+            {academicYears.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
-          <select value={semFilter} onChange={e => setSemFilter(e.target.value)} className="px-3 py-2 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+
+          <select value={semFilter} onChange={e => setSemFilter(e.target.value)} className={inputCls}>
             <option value="ALL">All Semesters</option>
-            <option value="I">Odd semester</option>
-            <option value="II">Even semester</option>
+            <option value="I">Odd Semester (I)</option>
+            <option value="II">Even Semester (II)</option>
           </select>
-          <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className="px-3 py-2 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+
+          <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className={inputCls}>
             <option value="ALL">All Departments</option>
             <option value="IT">IT</option>
             <option value="AIDS">AIDS</option>
             <option value="BOTH">BOTH</option>
           </select>
-          <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="px-3 py-2 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-          <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="px-3 py-2 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-          <button 
-            onClick={handleExportExcel}
-            disabled={isExporting || filtered.length === 0}
-            className="px-3 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-xl text-sm font-medium transition-colors"
-          >
-            {isExporting ? '⏳ Exporting...' : '📥 Export Excel'}
-          </button>
-          <button className="px-3 py-2 border border-green-200 text-green-700 rounded-xl text-sm hover:bg-green-50">⬇️ Download Excel</button>
+
+          <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className={inputCls} />
+          <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className={inputCls} />
         </div>
-        <div className="mt-2 text-xs text-slate-500">{filtered.length} records</div>
+
+        <div className="text-xs font-medium text-slate-500 pt-1 border-t border-slate-100 flex items-center justify-between">
+          <span>Showing <strong className="text-slate-900">{filtered.length}</strong> event records</span>
+          {(search || yearFilter !== 'ALL' || semFilter !== 'ALL' || deptFilter !== 'ALL' || fromDate || toDate) && (
+            <button
+              onClick={() => { setSearch(''); setYearFilter('ALL'); setSemFilter('ALL'); setDeptFilter('ALL'); setFromDate(''); setToDate(''); }}
+              className="text-xs font-semibold text-slate-600 hover:text-slate-900"
+            >
+              Reset Filters
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Excel Table */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs border-collapse">
-            <thead>
-              <tr className="bg-indigo-600 text-white">
+      {/* Grid Table Container */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+        <div className="overflow-x-auto max-h-[600px]">
+          <table className="w-full text-xs text-left border-collapse">
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-slate-900 text-white font-heading">
                 {columns.map(col => (
                   <th
                     key={col.key}
-                    className={`px-3 py-2.5 text-left font-semibold whitespace-nowrap border-r border-indigo-500 ${col.sortable ? 'cursor-pointer hover:bg-indigo-700' : ''}`}
+                    className={`px-3 py-3 font-semibold whitespace-nowrap border-r border-slate-800 text-[11px] uppercase tracking-wider ${col.sortable ? 'cursor-pointer hover:bg-slate-800' : ''}`}
                     onClick={() => col.sortable && handleSort(col.key)}
                   >
                     {col.label}{col.sortable && <SortIcon col={col.key} />}
@@ -206,33 +208,60 @@ export default function SemesterExcel({ academicYear = '' }: SemesterExcelProps)
                 ))}
               </tr>
             </thead>
-            <tbody>
-              {filtered.map((e, i) => (
-                <tr key={e.id} className={`border-b border-slate-100 hover:bg-indigo-50/30 ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}>
-                  <td className="px-3 py-2 text-slate-500 border-r border-slate-100">{i + 1}</td>
-                  <td className="px-3 py-2 border-r border-slate-100">{e.academicYear}</td>
-                  <td className="px-3 py-2 border-r border-slate-100">{e.semester === 'I' ? 'Odd semester' : 'Even semester'}</td>
-                  <td className="px-3 py-2 border-r border-slate-100">
-                    <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${e.department === 'IT' ? 'bg-blue-100 text-blue-700' : e.department === 'AIDS' ? 'bg-violet-100 text-violet-700' : 'bg-amber-100 text-amber-700'}`}>{e.department}</span>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={20} className="py-12 text-center text-slate-400">
+                    No matching event rows in scope.
                   </td>
-                  <td className="px-3 py-2 border-r border-slate-100">{(e.targetStudents || '').split(' ').slice(0, 3).join(' ') || '—'}</td>
-                  <td className="px-3 py-2 border-r border-slate-100">{e.type}</td>
-                  <td className="px-3 py-2 font-medium text-slate-800 border-r border-slate-100 max-w-48">{e.name}</td>
-                  <td className="px-3 py-2 border-r border-slate-100 whitespace-nowrap">{e.date}</td>
-                  <td className="px-3 py-2 border-r border-slate-100 whitespace-nowrap">{e.startTime}–{e.endTime}</td>
-                  <td className="px-3 py-2 border-r border-slate-100 whitespace-nowrap">{e.coordinator.split(' ').slice(0, 2).join(' ')}</td>
-                  <td className="px-3 py-2 border-r border-slate-100 whitespace-nowrap">{e.resourcePerson.name}</td>
-                  <td className="px-3 py-2 border-r border-slate-100">{e.resourcePerson.designation}</td>
-                  <td className="px-3 py-2 border-r border-slate-100">{e.resourcePerson.organization}</td>
-                  <td className="px-3 py-2 border-r border-slate-100">{e.mode}</td>
-                  <td className="px-3 py-2 border-r border-slate-100 max-w-32 truncate">{e.venue}</td>
-                  <td className="px-3 py-2 border-r border-slate-100 text-center font-medium">{e.actualParticipants || '—'}</td>
-                  <td className="px-3 py-2 border-r border-slate-100 text-center">{e.attendance > 0 ? `${e.attendance}%` : '—'}</td>
-                  <td className="px-3 py-2 border-r border-slate-100 text-center">{e.feedbackScore > 0 ? `⭐${e.feedbackScore}` : '—'}</td>
-                  <td className="px-3 py-2 border-r border-slate-100"><span className={`px-1.5 py-0.5 rounded text-xs font-medium ${e.docStatus === 'Completed' ? 'bg-green-100 text-green-700' : e.docStatus === 'Partial' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'}`}>{e.docStatus}</span></td>
-                  <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded text-xs font-medium ${e.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{e.status}</span></td>
                 </tr>
-              ))}
+              ) : (
+                filtered.map((e, i) => (
+                  <tr key={e.id} className={`hover:bg-indigo-50/30 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}>
+                    <td className="px-3 py-2.5 text-slate-400 font-mono text-[11px] border-r border-slate-100">{i + 1}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-100 font-medium text-slate-700">{e.academicYear}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-100 text-slate-600 whitespace-nowrap">{e.semester === 'I' ? 'Odd' : 'Even'}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-100 whitespace-nowrap">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        e.department === 'IT' ? 'bg-blue-50 text-blue-700' :
+                        e.department === 'AIDS' ? 'bg-purple-50 text-purple-700' :
+                        'bg-amber-50 text-amber-700'
+                      }`}>
+                        {e.department}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 border-r border-slate-100 text-slate-600 whitespace-nowrap">{(e.targetStudents || '').split(' ').slice(0, 3).join(' ') || '—'}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-100 text-slate-700 font-medium whitespace-nowrap">{e.type}</td>
+                    <td className="px-3 py-2.5 font-semibold text-slate-900 border-r border-slate-100 max-w-52 truncate" title={e.name}>{e.name}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-100 whitespace-nowrap font-mono text-slate-700">{e.date}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-100 whitespace-nowrap text-slate-500">{e.startTime}–{e.endTime}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-100 whitespace-nowrap text-slate-700 max-w-36 truncate">{e.coordinator}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-100 whitespace-nowrap text-slate-700 max-w-36 truncate">{e.resourcePerson?.name || '—'}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-100 text-slate-500 max-w-32 truncate">{e.resourcePerson?.designation || '—'}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-100 text-slate-500 max-w-32 truncate">{e.resourcePerson?.organization || '—'}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-100 text-slate-600">{e.mode}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-100 text-slate-600 max-w-32 truncate">{e.venue}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-100 text-center font-bold text-slate-900">{e.actualParticipants || '—'}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-100 text-center text-slate-700 font-medium">{e.attendance > 0 ? `${e.attendance}%` : '—'}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-100 text-center">{e.feedbackScore > 0 ? `⭐ ${e.feedbackScore}` : '—'}</td>
+                    <td className="px-3 py-2.5 border-r border-slate-100 whitespace-nowrap">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        e.docStatus === 'Completed' ? 'bg-emerald-50 text-emerald-700' :
+                        e.docStatus === 'Partial' ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'
+                      }`}>
+                        {e.docStatus}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        e.status === 'Completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'
+                      }`}>
+                        {e.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

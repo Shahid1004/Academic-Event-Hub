@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import type { AttendanceStatus, EventRecord, Page, StudentAttendanceRecord } from '../types';
 import { eventTypeColors } from './Dashboard';
@@ -340,22 +340,44 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
       .finally(() => { if (active) setFeedbackLoading(false); });
     return () => { active = false; };
   }, [eventId]);
+  // Track if feedback form was already loaded so typing is never overwritten
+  const feedbackFormLoadedRef = useRef(false);
+  useEffect(() => {
+    // Reset the loaded flag when the event changes so new event always populates the form
+    feedbackFormLoadedRef.current = false;
+  }, [eventId]);
   useEffect(() => {
     let active = true;
     setFeedbackAnalyticsLoading(true);
-    const refreshFeedbackData = () => Promise.all([getFeedbackForm(eventId), getFeedbackAnalytics(eventId)])
+
+    const loadFeedbackData = () => Promise.all([getFeedbackForm(eventId), getFeedbackAnalytics(eventId)])
       .then(([form, analytics]) => {
         if (!active) return;
         setFeedbackForm(form);
         setFeedbackAnalytics(analytics);
-        setFeedbackFormTitle(form?.title || 'Event Feedback');
-        setFeedbackFormStatus((form?.status as 'Draft' | 'Published' | 'Closed') || 'Draft');
-        setFeedbackFormQuestions(form?.questions || []);
+        // Only populate editable form fields once per event — never overwrite while user is typing
+        if (!feedbackFormLoadedRef.current) {
+          setFeedbackFormTitle(form?.title || 'Event Feedback');
+          setFeedbackFormStatus((form?.status as 'Draft' | 'Published' | 'Closed') || 'Draft');
+          setFeedbackFormQuestions(form?.questions || []);
+          feedbackFormLoadedRef.current = true;
+        }
       })
       .catch(error => { if (active) setFeedbackError(error?.response?.data?.message || 'Unable to load feedback form.'); })
       .finally(() => { if (active) setFeedbackAnalyticsLoading(false); });
-    refreshFeedbackData();
-    const refreshTimer = window.setInterval(refreshFeedbackData, 30000);
+
+    loadFeedbackData();
+
+    // Background timer only refreshes submission analytics so unsaved draft questions being typed are never overwritten
+    const refreshAnalyticsOnly = () => {
+      getFeedbackAnalytics(eventId)
+        .then(analytics => {
+          if (active) setFeedbackAnalytics(analytics);
+        })
+        .catch(() => {});
+    };
+
+    const refreshTimer = window.setInterval(refreshAnalyticsOnly, 30000);
     return () => { active = false; window.clearInterval(refreshTimer); };
   }, [eventId]);
   useEffect(() => {
@@ -394,16 +416,28 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
   const feedbackComments = [...feedbackRecords
     .map(record => record.comment || record.comments || record.response)
     .filter((comment): comment is string => typeof comment === 'string' && comment.trim().length > 0), ...(feedbackAnalytics?.comments || []).map(comment => `${comment.question}: ${comment.answer}`)];
-  const addFeedbackQuestion = () => setFeedbackFormQuestions(previous => [...previous, { id: `question-${Date.now()}`, text: '', type: 'text', required: false }]);
+  const addFeedbackQuestion = () => setFeedbackFormQuestions(previous => [
+    ...previous,
+    { id: `question-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, text: '', type: 'text', required: false }
+  ]);
   const saveEventFeedbackForm = async () => {
-    const questions = feedbackFormQuestions.filter(question => question.text.trim());
-    if (!questions.length) { setFeedbackFormMessage('Add at least one question before saving.'); return; }
+    const questionsToSave = feedbackFormQuestions
+      .map(question => ({
+        ...question,
+        text: question.text.trim(),
+        options: question.type === 'multiple-choice'
+          ? (question.options || []).map(opt => opt.trim()).filter(Boolean)
+          : undefined
+      }))
+      .filter(question => question.text.length > 0);
+
+    if (!questionsToSave.length) { setFeedbackFormMessage('Add at least one question with text before saving.'); return; }
     if (!feedbackFormTitle.trim()) { setFeedbackFormMessage('Please enter a form title.'); return; }
     setFeedbackFormSaving(true); setFeedbackFormMessage('');
     try {
-      const saved = await saveFeedbackForm(event.id, { title: feedbackFormTitle, status: feedbackFormStatus, questions });
+      const saved = await saveFeedbackForm(event.id, { title: feedbackFormTitle.trim(), status: feedbackFormStatus, questions: questionsToSave });
       setFeedbackForm(saved);
-      setFeedbackFormQuestions(saved.questions);
+      setFeedbackFormQuestions(saved.questions || []);
       setFeedbackFormStatus((saved.status as 'Draft' | 'Published' | 'Closed') || feedbackFormStatus);
       setFeedbackFormMessage(`✅ Feedback form saved successfully. Status: ${saved.status}`);
       try { const analytics = await getFeedbackAnalytics(event.id); setFeedbackAnalytics(analytics); } catch { /* analytics optional */ }
@@ -738,6 +772,199 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
     setAttendanceMode('online');
     setSaveToast(`✅ Imported ${importedRecords.length} students from hard copy sheet to Online Roster!`);
     setTimeout(() => setSaveToast(null), 3500);
+  };
+
+  // Export Attendance Roster as Excel (.xlsx)
+  const handleExportAttendanceExcel = () => {
+    const exportRows = attendanceRecords.map((r, index) => ({
+      'S.No': index + 1,
+      'Register Number': r.regNo,
+      'Student Name': r.studentName,
+      'Department': r.department || event.department || '-',
+      'Class / Section': r.className || '-',
+      'Attendance Status': r.status === 'P' ? 'Present (P)' : r.status === 'A' ? 'Absent (A)' : r.status === 'OD' ? 'On-Duty (OD)' : r.status || 'Not Marked',
+      'Remarks': r.remarks || ''
+    }));
+
+    const dataToExport = exportRows.length ? exportRows : [
+      { 'S.No': 1, 'Register Number': '221IT001', 'Student Name': 'Sample Student', 'Department': 'IT', 'Class / Section': 'III IT A', 'Attendance Status': 'Present (P)', 'Remarks': '' }
+    ];
+
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    worksheet['!cols'] = [
+      { wch: 6 },
+      { wch: 18 },
+      { wch: 28 },
+      { wch: 15 },
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 25 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendance Roster');
+    const safeName = (event.name || 'Event').replace(/[^\w\s-]/gi, '').replace(/\s+/g, '_');
+    XLSX.writeFile(workbook, `Attendance_Report_${event.id}_${safeName}.xlsx`);
+  };
+
+  // Download Student Roster Template as Excel (.xlsx)
+  const handleDownloadStudentTemplateExcel = () => {
+    const templateData = [
+      { 'Register Number': '221T001', 'Student Name': 'Arun Kumar M', 'Department': 'IT', 'Class': 'III', 'Section': 'A' },
+      { 'Register Number': '221T002', 'Student Name': 'Bhavya S', 'Department': 'IT', 'Class': 'III', 'Section': 'A' },
+      { 'Register Number': '221T003', 'Student Name': 'Chandran K', 'Department': 'IT', 'Class': 'III', 'Section': 'A' }
+    ];
+
+    const worksheet = XLSX.utils.json_to_sheet(templateData);
+    worksheet['!cols'] = [
+      { wch: 18 },
+      { wch: 28 },
+      { wch: 15 },
+      { wch: 12 },
+      { wch: 10 }
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Student Roster Template');
+    XLSX.writeFile(workbook, `Student_Attendance_Template_${event.id}.xlsx`);
+  };
+
+  // Export Attendance Roster as PDF (.pdf)
+  const handleExportAttendancePdf = async () => {
+    try {
+      const pdf = await PDFDocument.create();
+      const font = await pdf.embedFont(StandardFonts.Helvetica);
+      const boldFont = await pdf.embedFont(StandardFonts.HelveticaBold);
+
+      const records = attendanceRecords.length ? attendanceRecords : [];
+      const recordsPerPage = 22;
+      const totalPages = Math.max(1, Math.ceil(records.length / recordsPerPage));
+
+      let recordIdx = 0;
+
+      for (let pageNum = 0; pageNum < totalPages; pageNum++) {
+        const page = pdf.addPage([595, 842]);
+        const { width, height } = page.getSize();
+        const margin = 35;
+        let y = height - 40;
+
+        // Header branding
+        page.drawText('SONA COLLEGE OF TECHNOLOGY, SALEM', {
+          x: margin, y, size: 13, font: boldFont, color: rgb(0.12, 0.16, 0.53)
+        });
+        y -= 15;
+        page.drawText('DEPARTMENT OF INFORMATION TECHNOLOGY', {
+          x: margin, y, size: 9.5, font: boldFont, color: rgb(0.3, 0.3, 0.3)
+        });
+        y -= 13;
+        page.drawText(`Official Student Attendance Report — ${event.name || 'Event'}`, {
+          x: margin, y, size: 10.5, font: boldFont, color: rgb(0.1, 0.1, 0.1)
+        });
+        y -= 10;
+
+        // Divider
+        page.drawLine({
+          start: { x: margin, y }, end: { x: width - margin, y },
+          thickness: 1.5, color: rgb(0.2, 0.25, 0.65)
+        });
+        y -= 16;
+
+        // Summary Stats Box on Page 1
+        if (pageNum === 0) {
+          const presentCount = records.filter(r => r.status === 'P').length;
+          const absentCount = records.filter(r => r.status === 'A').length;
+          const odCount = records.filter(r => r.status === 'OD').length;
+          const total = records.length;
+          const rate = total ? Math.round((presentCount / total) * 100) : 0;
+
+          page.drawRectangle({
+            x: margin, y: y - 36, width: width - margin * 2, height: 42,
+            color: rgb(0.96, 0.97, 0.99), borderColor: rgb(0.85, 0.88, 0.93), borderWidth: 1
+          });
+
+          page.drawText(`Date: ${event.date || '—'}   Time: ${event.startTime || '—'} - ${event.endTime || '—'}   Venue: ${event.venue || '—'}`, {
+            x: margin + 10, y: y - 14, size: 8.5, font: boldFont, color: rgb(0.2, 0.2, 0.2)
+          });
+          page.drawText(`Total Registered: ${total}   |   Present (P): ${presentCount}   |   Absent (A): ${absentCount}   |   On-Duty (OD): ${odCount}   |   Rate: ${rate}%`, {
+            x: margin + 10, y: y - 28, size: 8.5, font: boldFont, color: rgb(0.1, 0.45, 0.2)
+          });
+          y -= 50;
+        }
+
+        // Table Header
+        const colX = {
+          sno: margin + 6,
+          regNo: margin + 35,
+          name: margin + 125,
+          classDept: margin + 295,
+          status: margin + 415,
+          remarks: margin + 475
+        };
+
+        page.drawRectangle({
+          x: margin, y: y - 18, width: width - margin * 2, height: 22,
+          color: rgb(0.18, 0.24, 0.45)
+        });
+
+        page.drawText('S.No', { x: colX.sno, y: y - 13, size: 8, font: boldFont, color: rgb(1, 1, 1) });
+        page.drawText('Register No', { x: colX.regNo, y: y - 13, size: 8, font: boldFont, color: rgb(1, 1, 1) });
+        page.drawText('Student Name', { x: colX.name, y: y - 13, size: 8, font: boldFont, color: rgb(1, 1, 1) });
+        page.drawText('Class / Dept', { x: colX.classDept, y: y - 13, size: 8, font: boldFont, color: rgb(1, 1, 1) });
+        page.drawText('Status', { x: colX.status, y: y - 13, size: 8, font: boldFont, color: rgb(1, 1, 1) });
+        page.drawText('Remarks', { x: colX.remarks, y: y - 13, size: 8, font: boldFont, color: rgb(1, 1, 1) });
+        y -= 22;
+
+        const pageRecords = records.slice(recordIdx, recordIdx + recordsPerPage);
+        pageRecords.forEach((record, idx) => {
+          const globalIdx = recordIdx + idx + 1;
+          const isEven = idx % 2 === 0;
+
+          page.drawRectangle({
+            x: margin, y: y - 18, width: width - margin * 2, height: 20,
+            color: isEven ? rgb(1, 1, 1) : rgb(0.97, 0.98, 1)
+          });
+
+          page.drawText(String(globalIdx), { x: colX.sno, y: y - 13, size: 8, font });
+          page.drawText((record.regNo || '-').slice(0, 16), { x: colX.regNo, y: y - 13, size: 8, font: boldFont });
+          page.drawText((record.studentName || '-').slice(0, 26), { x: colX.name, y: y - 13, size: 8, font });
+          page.drawText(`${record.className || ''} ${record.department || ''}`.trim().slice(0, 18) || '-', { x: colX.classDept, y: y - 13, size: 8, font });
+
+          let statusColor = rgb(0.3, 0.3, 0.3);
+          let statusText = record.status || 'N/M';
+          if (record.status === 'P') { statusText = 'Present (P)'; statusColor = rgb(0.05, 0.5, 0.2); }
+          else if (record.status === 'A') { statusText = 'Absent (A)'; statusColor = rgb(0.8, 0.1, 0.1); }
+          else if (record.status === 'OD') { statusText = 'On-Duty (OD)'; statusColor = rgb(0.1, 0.3, 0.8); }
+
+          page.drawText(statusText, { x: colX.status, y: y - 13, size: 8, font: boldFont, color: statusColor });
+          page.drawText((record.remarks || '').slice(0, 12), { x: colX.remarks, y: y - 13, size: 7.5, font });
+
+          page.drawLine({
+            start: { x: margin, y: y - 18 }, end: { x: width - margin, y: y - 18 },
+            thickness: 0.5, color: rgb(0.9, 0.9, 0.9)
+          });
+          y -= 20;
+        });
+
+        recordIdx += pageRecords.length;
+
+        if (pageNum === totalPages - 1) {
+          const sigY = Math.max(y - 45, 55);
+          page.drawText('Faculty Coordinator Signature', { x: margin + 20, y: sigY, size: 8.5, font: boldFont, color: rgb(0.3, 0.3, 0.3) });
+          page.drawText('HOD / Principal Approval', { x: width - margin - 150, y: sigY, size: 8.5, font: boldFont, color: rgb(0.3, 0.3, 0.3) });
+        }
+
+        page.drawText(`Page ${pageNum + 1} of ${totalPages}  |  Generated on ${new Date().toLocaleDateString('en-IN')}`, {
+          x: margin, y: 18, size: 7.5, font, color: rgb(0.5, 0.5, 0.5)
+        });
+      }
+
+      const safeName = (event.name || 'Event').replace(/[^\w\s-]/gi, '').replace(/\s+/g, '_');
+      await downloadPdf(pdf, `Attendance_Report_${event.id}_${safeName}.pdf`);
+    } catch (err) {
+      console.error('PDF Export Error:', err);
+      setSaveToast('❌ Failed to generate PDF report. Please try again.');
+      setTimeout(() => setSaveToast(null), 3000);
+    }
   };
 
 
@@ -1771,46 +1998,55 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
-                  <h4 className="font-semibold text-sm text-slate-800">Export & Templates</h4>
-                  <p className="text-xs text-slate-500">Download a starter template or export the current attendance data for the selected event.</p>
+                  <h4 className="font-semibold text-sm text-slate-800 flex items-center justify-between">
+                    <span>Export & Templates</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 uppercase tracking-wider">Excel & PDF</span>
+                  </h4>
+                  <p className="text-xs text-slate-500">Download starter template or export full student attendance roster in Excel (.xlsx) or PDF (.pdf) format.</p>
 
                   <div className="flex flex-col gap-2.5">
+                    {/* Excel Attendance Download */}
                     <button
-                      onClick={() => {
-                        const csvContent = "Register Number,Student Name,Department,Class,Section\n221T001,Arun Kumar M,IT,III,A\n221T002,Bhavya S,IT,III,A\n";
-                        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                        const url = URL.createObjectURL(blob);
-                        const link = document.createElement('a');
-                        link.href = url;
-                        link.download = `Student_Attendance_Template_${event.id}.csv`;
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                        URL.revokeObjectURL(url);
-                      }}
-                      className="px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-2xs"
+                      onClick={handleExportAttendanceExcel}
+                      className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all"
                     >
-                      📥 Download Student Template (.csv)
+                      📊 Export Attendance Excel (.xlsx)
                     </button>
 
+                    {/* PDF Attendance Download */}
                     <button
-                      onClick={() => {
-                        const header = 'Register Number,Student Name,Department,Class,Section,Attendance Status,Remarks\n';
-                        const rows = attendanceRecords.map(r => `${r.regNo},"${r.studentName}","${r.department || ''}","${r.className || ''}","${r.className || ''}","${r.status || ''}","${r.remarks || ''}"`).join('\n');
-                        const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `Attendance_Report_${event.id}_${event.name.replace(/\s+/g, '_')}.csv`;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        URL.revokeObjectURL(url);
-                      }}
-                      className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-sm"
+                      onClick={handleExportAttendancePdf}
+                      className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all"
                     >
-                      📊 Export Current Attendance CSV
+                      📄 Export Attendance Report (PDF)
                     </button>
+
+                    {/* Template Downloads */}
+                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200">
+                      <button
+                        onClick={handleDownloadStudentTemplateExcel}
+                        className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl text-[11px] font-semibold flex items-center justify-center gap-1.5 shadow-2xs"
+                      >
+                        📥 Template (.xlsx)
+                      </button>
+                      <button
+                        onClick={() => {
+                          const csvContent = "Register Number,Student Name,Department,Class,Section\n221T001,Arun Kumar M,IT,III,A\n221T002,Bhavya S,IT,III,A\n";
+                          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                          const url = URL.createObjectURL(blob);
+                          const link = document.createElement('a');
+                          link.href = url;
+                          link.download = `Student_Attendance_Template_${event.id}.csv`;
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                          URL.revokeObjectURL(url);
+                        }}
+                        className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-600 rounded-xl text-[11px] font-semibold flex items-center justify-center gap-1.5 shadow-2xs"
+                      >
+                        📄 Template (.csv)
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -2154,7 +2390,7 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
               <select value={feedbackFormStatus} onChange={e => setFeedbackFormStatus(e.target.value as 'Draft' | 'Published' | 'Closed')} className="px-3 py-2 border border-slate-200 rounded-xl text-sm"><option>Draft</option><option>Published</option><option>Closed</option></select>
             </div>
             <input value={feedbackFormTitle} onChange={e => setFeedbackFormTitle(e.target.value)} placeholder="Form title" className="mt-4 w-full px-3 py-2 border border-slate-200 rounded-xl text-sm" />
-            <div className="space-y-3 mt-3">{feedbackFormQuestions.map((question, index) => <div key={question.id} className="p-3 border border-slate-100 rounded-xl space-y-2"><div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center"><input value={question.text} onChange={e => setFeedbackFormQuestions(previous => previous.map(item => item.id === question.id ? { ...item, text: e.target.value } : item))} placeholder={`Question ${index + 1}`} className="px-3 py-2 border border-slate-200 rounded-xl text-sm" /><select value={question.type} onChange={e => setFeedbackFormQuestions(previous => previous.map(item => item.id === question.id ? { ...item, type: e.target.value as FeedbackQuestion['type'], options: e.target.value === 'multiple-choice' ? (item.options?.length ? item.options : ['']) : item.options } : item))} className="px-2 py-2 border border-slate-200 rounded-xl text-sm"><option value="text">Text</option><option value="rating">Rating</option><option value="yes-no">Yes / No</option><option value="multiple-choice">Multiple Choice</option></select><label className="text-xs text-slate-500 flex items-center gap-1"><input type="checkbox" checked={Boolean(question.required)} onChange={e => setFeedbackFormQuestions(previous => previous.map(item => item.id === question.id ? { ...item, required: e.target.checked } : item))} /> Required</label><button onClick={() => setFeedbackFormQuestions(previous => previous.filter(item => item.id !== question.id))} className="text-xs text-red-500">Remove</button></div>{question.type === 'multiple-choice' && <input value={(question.options || []).join(', ')} onChange={e => setFeedbackFormQuestions(previous => previous.map(item => item.id === question.id ? { ...item, options: e.target.value.split(',').map(option => option.trim()).filter(Boolean) } : item))} placeholder="Options separated by commas" className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm" />}</div>)}</div>
+            <div className="space-y-3 mt-3">{feedbackFormQuestions.map((question, index) => <div key={question.id} className="p-3 border border-slate-100 rounded-xl space-y-2"><div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center"><input value={question.text} onChange={e => setFeedbackFormQuestions(previous => previous.map(item => item.id === question.id ? { ...item, text: e.target.value } : item))} placeholder={`Question ${index + 1}`} className="px-3 py-2 border border-slate-200 rounded-xl text-sm" /><select value={question.type} onChange={e => setFeedbackFormQuestions(previous => previous.map(item => item.id === question.id ? { ...item, type: e.target.value as FeedbackQuestion['type'], options: e.target.value === 'multiple-choice' ? (item.options?.length ? item.options : ['']) : item.options } : item))} className="px-2 py-2 border border-slate-200 rounded-xl text-sm"><option value="text">Text</option><option value="rating">Rating</option><option value="yes-no">Yes / No</option><option value="multiple-choice">Multiple Choice</option></select><label className="text-xs text-slate-500 flex items-center gap-1"><input type="checkbox" checked={Boolean(question.required)} onChange={e => setFeedbackFormQuestions(previous => previous.map(item => item.id === question.id ? { ...item, required: e.target.checked } : item))} /> Required</label><button onClick={() => setFeedbackFormQuestions(previous => previous.filter(item => item.id !== question.id))} className="text-xs text-red-500">Remove</button></div>{question.type === 'multiple-choice' && <input value={(question.options || []).join(', ')} onChange={e => setFeedbackFormQuestions(previous => previous.map(item => item.id === question.id ? { ...item, options: e.target.value.split(',') } : item))} placeholder="Options separated by commas (e.g. Excellent, Good, Average)" className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm" />}</div>)}</div>
             <div className="flex gap-2 mt-4"><button onClick={addFeedbackQuestion} className="px-3 py-2 border border-slate-200 rounded-xl text-sm text-slate-600">Add Question</button><button onClick={saveEventFeedbackForm} disabled={feedbackFormSaving} className="px-4 py-2 bg-indigo-600 disabled:bg-indigo-300 text-white rounded-xl text-sm font-semibold">{feedbackFormSaving ? 'Saving...' : 'Save Feedback Form'}</button></div>
             {feedbackFormMessage && <p className="text-sm mt-3 text-slate-600">{feedbackFormMessage}</p>}
           </div>

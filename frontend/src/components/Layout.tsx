@@ -21,14 +21,14 @@ const sidebarSections = [
     items: [{ id: 'dashboard', label: 'Main Dashboard', icon: 'grid' }],
   },
   {
-    label: 'DEPARTMENTS',
+    label: 'Departments',
     items: [
       { id: 'it-dashboard', label: 'Information Technology', icon: 'cpu' },
       { id: 'aids-dashboard', label: 'AI & Data Science', icon: 'brain' },
     ],
   },
   {
-    label: 'EVENTS',
+    label: 'Events',
     items: [
       { id: 'all-events', label: 'All Events', icon: 'list' },
       { id: 'joint-events', label: 'Joint Events', icon: 'link' },
@@ -36,7 +36,7 @@ const sidebarSections = [
     ],
   },
   {
-    label: 'MANAGEMENT',
+    label: 'Management',
     items: [
       { id: 'assigned-events', label: 'My Assigned Events', icon: 'clipboard' },
       { id: 'documentation', label: 'Documentation', icon: 'file-text' },
@@ -44,18 +44,18 @@ const sidebarSections = [
     ],
   },
   {
-    label: 'ANALYTICS',
+    label: 'Analytics',
     items: [{ id: 'analytics', label: 'Overall Analytics', icon: 'trending-up' }],
   },
   {
-    label: 'SYSTEM',
+    label: 'System',
     items: [{ id: 'settings', label: 'Settings', icon: 'settings' }],
   },
 ];
 
-function Icon({ name, className = 'w-5 h-5' }: { name: string; className?: string }) {
+function Icon({ name, className = 'w-[18px] h-[18px]' }: { name: string; className?: string }) {
   const icons: Record<string, React.ReactNode> = {
-    grid: <><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></>,
+    grid: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /></>,
     cpu: <><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" /><line x1="9" y1="1" x2="9" y2="4" /><line x1="15" y1="1" x2="15" y2="4" /><line x1="9" y1="20" x2="9" y2="23" /><line x1="15" y1="20" x2="15" y2="23" /><line x1="20" y1="9" x2="23" y2="9" /><line x1="20" y1="14" x2="23" y2="14" /><line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="14" x2="4" y2="14" /></>,
     brain: <><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z" /><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z" /></>,
     list: <><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" /></>,
@@ -73,15 +73,32 @@ function Icon({ name, className = 'w-5 h-5' }: { name: string; className?: strin
     x: <><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></>,
     plus: <><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></>,
     logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></>,
+    sun: <><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></>,
+    moon: <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />,
+    shield: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />,
   };
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className}>
       {icons[name]}
     </svg>
   );
 }
 
 export { Icon };
+
+const roleLabels: Record<string, string> = {
+  admin: 'Administrator',
+  hod: 'Head of Department',
+  coordinator: 'Coordinator',
+  faculty: 'Faculty',
+};
+
+const roleColors: Record<string, string> = {
+  admin: 'bg-purple-500/20 text-purple-300',
+  hod: 'bg-blue-500/20 text-blue-300',
+  coordinator: 'bg-emerald-500/20 text-emerald-300',
+  faculty: 'bg-slate-500/20 text-slate-300',
+};
 
 export default function Layout({ currentPage, navigate, children, userRole = 'faculty', academicYear, academicYears, onAcademicYearChange, profile, settings, onSettingsChange }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -91,6 +108,7 @@ export default function Layout({ currentPage, navigate, children, userRole = 'fa
   const visibleNotifications = settings
     ? notifications.filter(notification => settings.notifications[notification.preferenceKey] !== false)
     : notifications;
+
   const confirmLogout = () => {
     if (window.confirm('Are you sure you want to log out?')) {
       localStorage.clear();
@@ -98,42 +116,77 @@ export default function Layout({ currentPage, navigate, children, userRole = 'fa
       navigate('login' as Page);
     }
   };
+
   const toggleTheme = () => {
     if (!settings) return;
     const mode = settings.theme.mode === 'dark' ? 'light' : 'dark';
     onSettingsChange({ ...settings, theme: { ...settings.theme, mode } });
   };
 
-  const avatarClass = profile.avatarColor === 'blue' ? 'bg-blue-600' : profile.avatarColor === 'teal' ? 'bg-teal-600' : profile.avatarColor === 'rose' ? 'bg-rose-600' : 'bg-indigo-600';
   const userInitials = profile.name.trim().split(/\s+/).map(word => word[0]).join('').slice(0, 2).toUpperCase() || 'U';
+  const avatarGradient = profile.avatarColor === 'blue' ? 'from-blue-500 to-blue-700'
+    : profile.avatarColor === 'teal' ? 'from-teal-500 to-teal-700'
+    : profile.avatarColor === 'rose' ? 'from-rose-500 to-rose-700'
+    : 'from-indigo-500 to-violet-600';
+
+  const isDark = settings?.theme.mode === 'dark';
+
+  const pageTitle: Record<string, string> = {
+    'dashboard': 'Main Dashboard',
+    'it-dashboard': 'IT Department',
+    'aids-dashboard': 'AI & Data Science',
+    'all-events': 'All Events',
+    'joint-events': 'Joint Events',
+    'calendar': 'Calendar',
+    'assigned-events': 'My Assigned Events',
+    'documentation': 'Documentation',
+    'reports': 'Reports',
+    'analytics': 'Analytics',
+    'settings': 'Settings',
+    'event-details': 'Event Details',
+    'create-event': 'Create Event',
+    'semester-excel': 'Semester Export',
+    'user-management': 'User Management',
+  };
 
   return (
-    <div className="flex h-screen bg-slate-100 overflow-hidden">
-      {/* Sidebar */}
+    <div className="flex h-screen overflow-hidden" style={{ backgroundColor: isDark ? '#0B0F19' : '#F0F2F7' }}>
+      {/* ── SIDEBAR ── */}
       <aside
-        className={`${sidebarOpen ? 'w-64' : 'w-0 lg:w-16'} flex-shrink-0 bg-white border-r border-slate-200 flex flex-col overflow-hidden transition-all duration-300 z-20`}
+        className={`${sidebarOpen ? 'w-60' : 'w-0 lg:w-[60px]'} flex-shrink-0 flex flex-col overflow-hidden transition-all duration-300 z-20 sidebar-enterprise`}
+        style={{ boxShadow: '2px 0 12px rgba(0,0,0,0.15)' }}
       >
-        {/* Sidebar Logo */}
-        <div className={`flex items-center gap-3 px-4 py-4 border-b border-slate-100 ${!sidebarOpen && 'lg:justify-center'}`}>
-          <div className="w-9 h-9 flex-shrink-0 bg-indigo-600 rounded-xl flex items-center justify-center">
-            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white" stroke="currentColor" strokeWidth="2">
+        {/* Logo */}
+        <div
+          className={`flex items-center gap-2.5 px-4 py-4 flex-shrink-0 ${!sidebarOpen && 'lg:justify-center'}`}
+          style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', minHeight: '64px' }}
+        >
+          <div
+            className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg"
+            style={{ background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)', boxShadow: '0 4px 12px rgba(79,70,229,0.4)' }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" className="w-4.5 h-4.5 text-white" stroke="currentColor" strokeWidth="2.5">
               <path d="M12 14l9-5-9-5-9 5 9 5z" />
+              <path d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" />
             </svg>
           </div>
           {sidebarOpen && (
             <div className="truncate">
-              <div className="text-sm font-bold font-heading text-gray-900 leading-tight">Academic Event Hub</div>
-              <div className="text-xs text-gray-400">SmartEvents</div>
+              <div className="text-[13px] font-bold leading-tight text-white" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                Academic Event Hub
+              </div>
+              <div className="text-[10px] mt-0.5" style={{ color: 'rgba(148,163,184,0.7)' }}>SmartEvents Platform</div>
             </div>
           )}
         </div>
 
         {/* Create Event Button */}
         {sidebarOpen && ['admin', 'coordinator'].includes(userRole) && (
-          <div className="px-3 pt-3">
+          <div className="px-3 pt-3 flex-shrink-0">
             <button
               onClick={() => navigate('create-event')}
-              className="w-full flex items-center gap-2 px-3 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium"
+              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold text-white transition-all duration-200"
+              style={{ background: 'linear-gradient(135deg, #4F46E5 0%, #6366F1 100%)', boxShadow: '0 4px 14px rgba(79,70,229,0.4)', letterSpacing: '0.01em' }}
             >
               <Icon name="plus" className="w-4 h-4" />
               Create Event
@@ -141,12 +194,12 @@ export default function Layout({ currentPage, navigate, children, userRole = 'fa
           </div>
         )}
 
-        {/* Nav Items */}
+        {/* Nav */}
         <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
           {sidebarSections.map((section, si) => (
-            <div key={si} className="mb-2">
+            <div key={si} className={si > 0 ? 'mt-3' : ''}>
               {section.label && sidebarOpen && (
-                <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{section.label}</div>
+                <div className="sidebar-section-label">{section.label}</div>
               )}
               {section.items.map(item => {
                 const active = currentPage === item.id;
@@ -154,16 +207,16 @@ export default function Layout({ currentPage, navigate, children, userRole = 'fa
                   <button
                     key={item.id}
                     onClick={() => navigate(item.id as Page)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                      active
-                        ? 'bg-indigo-50 text-indigo-700'
-                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                    } ${!sidebarOpen && 'lg:justify-center'}`}
+                    className={`sidebar-nav-item ${active ? 'active' : ''} ${!sidebarOpen && 'lg:justify-center'}`}
                     title={!sidebarOpen ? item.label : undefined}
                   >
-                    <Icon name={item.icon} className={`w-4.5 h-4.5 flex-shrink-0 ${active ? 'text-indigo-600' : 'text-slate-400'}`} />
-                    {sidebarOpen && <span className="truncate">{item.label}</span>}
-                    {active && sidebarOpen && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-600" />}
+                    <Icon
+                      name={item.icon}
+                      className={`w-[18px] h-[18px] flex-shrink-0 transition-colors ${active ? 'text-indigo-400' : 'text-slate-500'}`}
+                    />
+                    {sidebarOpen && (
+                      <span className="truncate">{item.label}</span>
+                    )}
                   </button>
                 );
               })}
@@ -171,84 +224,161 @@ export default function Layout({ currentPage, navigate, children, userRole = 'fa
           ))}
         </nav>
 
-        {/* Sidebar Footer */}
+        {/* User Footer */}
         {sidebarOpen && (
-          <div className="px-3 py-3 border-t border-slate-100">
-            <div className="flex items-center gap-3 px-2 py-2">
-              <div className={`w-8 h-8 rounded-full ${avatarClass} flex items-center justify-center text-white font-bold text-sm flex-shrink-0`}>{userInitials}</div>
-              <div className="flex-1 truncate">
-                <div className="text-sm font-medium text-slate-800">{profile.name}</div>
-                <div className="text-xs text-slate-400">{profile.designation || profile.role} — {profile.department}</div>
+          <div className="flex-shrink-0 px-3 py-3" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            {/* Role badge */}
+            <div className="mb-2 px-1">
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${roleColors[userRole] || roleColors.faculty}`}>
+                {roleLabels[userRole] || 'Faculty'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.04)' }}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs flex-shrink-0 bg-gradient-to-br ${avatarGradient}`}>
+                {userInitials}
               </div>
-              <button onClick={confirmLogout} className="text-slate-400 hover:text-slate-600">
-                <Icon name="logout" className="w-4 h-4" />
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-semibold text-white truncate leading-tight">{profile.name}</div>
+                <div className="text-[10px] truncate mt-0.5" style={{ color: 'rgba(148,163,184,0.7)' }}>
+                  {profile.designation || profile.role} · {profile.department}
+                </div>
+              </div>
+              <button
+                onClick={confirmLogout}
+                className="flex-shrink-0 p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+                style={{ color: 'rgba(148,163,184,0.6)' }}
+                title="Sign out"
+              >
+                <Icon name="logout" className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
         )}
       </aside>
 
-      {/* Main Content */}
+      {/* ── MAIN CONTENT AREA ── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Top Bar */}
-        <header className="flex items-center gap-4 px-4 py-3 bg-white border-b border-slate-200 flex-shrink-0 z-10">
+        {/* ── TOP BAR ── */}
+        <header
+          className="flex items-center gap-3 px-4 flex-shrink-0 header-enterprise"
+          style={{ height: '64px', minHeight: '64px' }}
+        >
+          {/* Menu toggle */}
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg"
+            className="p-2 rounded-lg transition-colors"
+            style={{ color: isDark ? '#CBD5E1' : undefined }}
           >
             <Icon name="menu" className="w-5 h-5" />
           </button>
 
-          <div className="flex items-center gap-2 flex-1">
-            <span className="text-sm font-medium text-slate-800 font-heading hidden sm:block">Academic Event Hub</span>
-            <div className="hidden sm:block text-slate-300">|</div>
-            <select
-              value={academicYear}
-              onChange={e => onAcademicYearChange(e.target.value)}
-              className="text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-slate-50 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            >
-              <option value="">All years</option>
-              {academicYears.map(year => <option key={year} value={year}>{year}</option>)}
-            </select>
+          {/* Page title breadcrumb */}
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div className="hidden sm:flex items-center gap-2">
+              <span className="text-xs font-medium text-slate-400">Academic Event Hub</span>
+              <svg className="w-3 h-3 text-slate-300" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+              <span className="text-sm font-semibold text-slate-700">{pageTitle[currentPage] || 'Page'}</span>
+            </div>
+
+            {/* Academic year selector */}
+            <div className="ml-3">
+              <select
+                value={academicYear}
+                onChange={e => onAcademicYearChange(e.target.value)}
+                className="text-xs font-medium border rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all cursor-pointer"
+                style={isDark ? {
+                  background: '#131B2E',
+                  borderColor: 'rgba(255,255,255,0.14)',
+                  color: '#F8FAFC',
+                  fontSize: '12px'
+                } : {
+                  background: '#F8FAFC',
+                  borderColor: '#E2E8F0',
+                  color: '#374151',
+                  fontSize: '12px'
+                }}
+              >
+                <option value="">All years</option>
+                {academicYears.map(year => <option key={year} value={year}>{year}</option>)}
+              </select>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Right controls */}
+          <div className="flex items-center gap-1.5">
+            {/* Theme toggle */}
             <button
               onClick={toggleTheme}
               disabled={!settings}
-              aria-label={settings?.theme.mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-              title={settings?.theme.mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg disabled:opacity-50"
+              aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              className="p-2 rounded-lg transition-all disabled:opacity-40"
+              style={{ color: isDark ? '#CBD5E1' : undefined }}
             >
-              <span className="text-base">{settings?.theme.mode === 'dark' ? '☀' : '☾'}</span>
+              <Icon name={isDark ? 'sun' : 'moon'} className="w-4.5 h-4.5" />
             </button>
+
             {/* Notifications */}
             <div className="relative">
               <button
                 onClick={() => { setShowNotifications(!showNotifications); setShowProfile(false); }}
-                className="relative p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg"
+                className="relative p-2 rounded-lg transition-all"
+                style={{ color: isDark ? '#CBD5E1' : undefined }}
               >
-                <Icon name="bell" className="w-5 h-5" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
+                <Icon name="bell" className="w-4.5 h-4.5" />
+                {visibleNotifications.length > 0 && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white" />
+                )}
               </button>
+
               {showNotifications && (
-                <div className="absolute right-0 top-11 w-80 bg-white rounded-2xl shadow-xl border border-slate-100 z-50 overflow-hidden">
-                  <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-                    <span className="font-semibold text-slate-800">Notifications</span>
-                    <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">{visibleNotifications.length} new</span>
+                <div
+                  className="absolute right-0 top-12 w-80 rounded-xl z-50 overflow-hidden"
+                  style={isDark ? {
+                    background: '#1E293B',
+                    boxShadow: '0 16px 48px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)',
+                    border: '1px solid rgba(255,255,255,0.12)'
+                  } : {
+                    background: '#FFFFFF',
+                    boxShadow: '0 10px 40px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.06)',
+                    border: '1px solid #E8ECF0'
+                  }}
+                >
+                  <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #F1F5F9' }}>
+                    <div>
+                      <span className="font-semibold text-sm" style={{ color: isDark ? '#F8FAFC' : undefined }}>Notifications</span>
+                      {visibleNotifications.length > 0 && (
+                        <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                          style={isDark ? { background: 'rgba(239,68,68,0.2)', color: '#F87171' } : { background: undefined, color: undefined }}
+                        >
+                          {isDark ? '' : <span className="bg-red-100 text-red-600">{visibleNotifications.length} new</span>}
+                          {isDark && `${visibleNotifications.length} new`}
+                        </span>
+                      )}
+                    </div>
+                    <button onClick={() => setShowNotifications(false)} className="p-1 rounded" style={{ color: isDark ? '#94A3B8' : undefined }}>
+                      <Icon name="x" className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                   <div className="max-h-72 overflow-y-auto">
-                    {visibleNotifications.length === 0 && <p className="px-4 py-6 text-sm text-slate-500">No new notifications.</p>}
+                    {visibleNotifications.length === 0 && (
+                      <p className="px-4 py-8 text-sm text-center" style={{ color: isDark ? '#94A3B8' : undefined }}>No new notifications</p>
+                    )}
                     {visibleNotifications.map(n => (
                       <button
                         key={n.id}
                         onClick={() => { navigate('event-details', n.eventId); setShowNotifications(false); }}
-                        className="w-full flex items-start gap-3 px-4 py-3 hover:bg-slate-50 text-left border-b border-slate-50"
+                        className="w-full flex items-start gap-3 px-4 py-3 text-left transition-colors"
+                        style={{ borderBottom: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid #F8FAFC' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : '#F8FAFC')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                       >
-                        <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${n.type === 'success' ? 'bg-green-500' : n.type === 'warning' ? 'bg-amber-500' : 'bg-blue-500'}`} />
-                        <div>
-                          <p className="text-sm text-slate-700">{n.text}</p>
-                          <p className="text-xs text-slate-400 mt-0.5">{n.time}</p>
+                        <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${n.type === 'success' ? 'bg-emerald-500' : n.type === 'warning' ? 'bg-amber-500' : 'bg-blue-500'}`} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] leading-snug" style={{ color: isDark ? '#CBD5E1' : '#374151' }}>{n.text}</p>
+                          <p className="text-[11px] mt-0.5" style={{ color: isDark ? '#94A3B8' : '#94A3B8' }}>{n.time}</p>
                         </div>
                       </button>
                     ))}
@@ -261,35 +391,71 @@ export default function Layout({ currentPage, navigate, children, userRole = 'fa
             <div className="relative">
               <button
                 onClick={() => { setShowProfile(!showProfile); setShowNotifications(false); }}
-                className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-100 rounded-xl"
+                className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-xl transition-colors"
+                style={{ color: isDark ? '#CBD5E1' : undefined }}
+                onMouseEnter={e => (e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
               >
-                <div className={`w-8 h-8 rounded-full ${avatarClass} flex items-center justify-center text-white font-bold text-sm`}>{userInitials}</div>
-                <span className="hidden sm:block text-sm font-medium text-slate-700">{profile.name}</span>
-                <Icon name="chevronDown" className="w-4 h-4 text-slate-400" />
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs bg-gradient-to-br ${avatarGradient}`}>
+                  {userInitials}
+                </div>
+                <div className="hidden sm:flex flex-col items-start">
+                  <span className="text-[13px] font-semibold leading-tight" style={{ color: isDark ? '#F8FAFC' : '#334155' }}>{profile.name.split(' ')[0]}</span>
+                  <span className="text-[10px] leading-tight capitalize" style={{ color: isDark ? '#94A3B8' : '#94A3B8' }}>{userRole}</span>
+                </div>
+                <Icon name="chevronDown" className="w-3.5 h-3.5 hidden sm:block" />
               </button>
+
               {showProfile && (
-                <div className="absolute right-0 top-11 w-52 bg-white rounded-2xl shadow-xl border border-slate-100 z-50 overflow-hidden">
-                  <div className="px-4 py-3 border-b border-slate-100">
-                    <div className="text-sm font-semibold text-slate-800">{profile.name}</div>
-                    <div className="text-xs text-slate-400">{profile.designation || profile.role} — {profile.department}</div>
+                <div
+                  className="absolute right-0 top-12 w-56 rounded-xl z-50 overflow-hidden"
+                  style={isDark ? {
+                    background: '#1E293B',
+                    boxShadow: '0 16px 48px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)',
+                    border: '1px solid rgba(255,255,255,0.12)'
+                  } : {
+                    background: '#FFFFFF',
+                    boxShadow: '0 10px 40px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.06)',
+                    border: '1px solid #E8ECF0'
+                  }}
+                >
+                  <div className="px-4 py-3" style={{ borderBottom: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #F1F5F9' }}>
+                    <div className="flex items-center gap-2.5">
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm bg-gradient-to-br ${avatarGradient}`}>
+                        {userInitials}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold truncate" style={{ color: isDark ? '#F8FAFC' : '#1E293B' }}>{profile.name}</div>
+                        <div className="text-[11px] truncate" style={{ color: isDark ? '#94A3B8' : '#94A3B8' }}>{profile.email}</div>
+                      </div>
+                    </div>
                   </div>
-                  {[
-                    { label: 'Profile Settings', page: 'settings' as Page },
-                    { label: 'My Assigned Events', page: 'assigned-events' as Page },
-                  ].map(item => (
-                    <button
-                      key={item.label}
-                      onClick={() => { navigate(item.page); setShowProfile(false); }}
-                      className="w-full text-left px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50"
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                  <div className="border-t border-slate-100">
+                  <div className="py-1">
+                    {[
+                      { label: 'Profile Settings', page: 'settings' as Page },
+                      { label: 'My Assigned Events', page: 'assigned-events' as Page },
+                    ].map(item => (
+                      <button
+                        key={item.label}
+                        onClick={() => { navigate(item.page); setShowProfile(false); }}
+                        className="w-full text-left px-4 py-2 text-[13px] transition-colors"
+                        style={{ color: isDark ? '#CBD5E1' : '#475569' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : '#F8FAFC')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ borderTop: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #F1F5F9' }}>
                     <button
                       onClick={confirmLogout}
-                      className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50"
+                      className="w-full text-left px-4 py-2.5 text-[13px] font-medium flex items-center gap-2 transition-colors"
+                      style={{ color: isDark ? '#F87171' : '#DC2626' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = isDark ? 'rgba(239,68,68,0.15)' : '#FEF2F2')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                     >
+                      <Icon name="logout" className="w-3.5 h-3.5" />
                       Sign Out
                     </button>
                   </div>
@@ -299,15 +465,19 @@ export default function Layout({ currentPage, navigate, children, userRole = 'fa
           </div>
         </header>
 
-        {/* Page Content */}
-        <main className="flex-1 overflow-y-auto">
+        {/* ── PAGE CONTENT ── */}
+        <main className="flex-1 overflow-y-auto page-content">
           {children}
         </main>
       </div>
 
       {/* Mobile overlay */}
       {sidebarOpen && (
-        <div className="lg:hidden fixed inset-0 bg-black/20 z-10" onClick={() => setSidebarOpen(false)} />
+        <div
+          className="lg:hidden fixed inset-0 z-10"
+          style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)' }}
+          onClick={() => setSidebarOpen(false)}
+        />
       )}
     </div>
   );
