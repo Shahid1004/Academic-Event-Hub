@@ -9,7 +9,7 @@ const { authenticate } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 const upload = multer({
-	dest: uploadRoot,
+	storage: multer.memoryStorage(),
 	limits: { fileSize: maxFileSize },
 });
 

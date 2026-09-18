@@ -17,6 +17,9 @@ const eventSchema = new mongoose.Schema({
   feedbackScore: { type: Number, default: 0 },
   docStatus: { type: String, trim: true },
   status: { type: String, trim: true, index: true },
+  semester: { type: String, trim: true },
+  oneDriveFolderId: { type: String, trim: true, index: true },
+  oneDriveFolderPath: { type: String, trim: true },
 }, { timestamps: true, strict: false });
 
 eventSchema.index({ academicYear: 1, department: 1, date: -1 });

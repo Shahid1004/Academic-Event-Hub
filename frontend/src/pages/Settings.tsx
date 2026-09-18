@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { AppSettings, UserProfile, UserRole } from '../types';
-import { updateProfile, updateSettings } from '../services/api';
+import { updateProfile, updateSettings, getOneDriveStatus, getOneDriveLoginUrl, disconnectOneDrive, type OneDriveStatus } from '../services/api';
 import UserManagement from './UserManagement';
 
-type SettingsTab = 'profile' | 'academic-year' | 'departments' | 'event-types' | 'doc-categories' | 'notifications' | 'users' | 'system';
+type SettingsTab = 'profile' | 'academic-year' | 'departments' | 'event-types' | 'doc-categories' | 'users' | 'system' | 'onedrive';
 
 interface SettingsProps {
   currentUserRole: UserRole;
@@ -13,15 +13,6 @@ interface SettingsProps {
   onSettingsChange: (settings: AppSettings) => void;
 }
 
-const notificationLabels: Record<string, string> = {
-  attendancePending: 'Attendance pending reminder',
-  feedbackCompleted: 'Feedback collection completed',
-  paymentPending: 'Payment document pending',
-  reportGenerated: 'Event report generated',
-  documentationCompleted: 'Documentation completed',
-  upcomingEvent: 'Upcoming event reminder',
-  newEventAssigned: 'New event assigned'
-};
 
 const getInitials = (name: string) => name.trim().split(/\s+/).map(word => word[0]).join('').slice(0, 2).toUpperCase() || 'U';
 
@@ -33,7 +24,23 @@ export default function Settings({ currentUserRole, profile, settings, onProfile
   const [newCategory, setNewCategory] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [oneDriveStatus, setOneDriveStatus] = useState<OneDriveStatus | null>(null);
+  const [loadingOneDrive, setLoadingOneDrive] = useState(false);
   const canEditGlobal = currentUserRole === 'admin' || currentUserRole === 'hod';
+
+  const loadOneDriveStatus = () => {
+    setLoadingOneDrive(true);
+    getOneDriveStatus()
+      .then(setOneDriveStatus)
+      .catch(() => setOneDriveStatus({ connected: false, configured: false }))
+      .finally(() => setLoadingOneDrive(false));
+  };
+
+  useEffect(() => {
+    if (tab === 'onedrive') {
+      loadOneDriveStatus();
+    }
+  }, [tab]);
 
   const saveProfile = async () => {
     setSaving(true);
@@ -106,17 +113,17 @@ export default function Settings({ currentUserRole, profile, settings, onProfile
         </svg>
       )
     },
-    {
-      id: 'notifications', label: 'Notifications', icon: (
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-        </svg>
-      )
-    },
     ...(currentUserRole !== 'coordinator' ? [{
       id: 'users' as SettingsTab, label: 'User Directory', icon: (
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+        </svg>
+      )
+    }] : []),
+    ...(canEditGlobal ? [{
+      id: 'onedrive' as SettingsTab, label: 'OneDrive Storage', icon: (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 00-9.78 2.096A4.001 4.001 0 003 15z" />
         </svg>
       )
     }] : []),
@@ -438,31 +445,6 @@ export default function Settings({ currentUserRole, profile, settings, onProfile
             </div>
           )}
 
-          {/* Notifications */}
-          {tab === 'notifications' && (
-            <div className={cardCls}>
-              <div className="pb-3 border-b border-slate-100">
-                <h3 className="font-bold font-heading text-slate-900 text-sm">System Notification Subscriptions</h3>
-                <p className="text-xs text-slate-400 mt-0.5">Control alert preferences and email notifications</p>
-              </div>
-
-              <div className="divide-y divide-slate-100">
-                {Object.entries(settings.notifications).map(([key, checked]) => (
-                  <label key={key} className="flex items-center justify-between py-3 cursor-pointer group">
-                    <span className="text-xs font-semibold text-slate-700 group-hover:text-slate-900">
-                      {notificationLabels[key] || key}
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={e => saveSettings({ notifications: { ...settings.notifications, [key]: e.target.checked } })}
-                      className="h-4 w-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
-                    />
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* User Management Embed */}
           {tab === 'users' && currentUserRole !== 'coordinator' && (
@@ -501,6 +483,107 @@ export default function Settings({ currentUserRole, profile, settings, onProfile
                     <option value="high">High Contrast (Accessibility)</option>
                   </select>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Microsoft OneDrive Cloud Storage */}
+          {tab === 'onedrive' && canEditGlobal && (
+            <div className={cardCls}>
+              <div className="pb-3 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold font-heading text-slate-900 text-sm flex items-center gap-2">
+                    <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 00-9.78 2.096A4.001 4.001 0 003 15z" />
+                    </svg>
+                    Microsoft OneDrive Cloud Storage
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Automated document repository integration via Microsoft Graph API</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={loadOneDriveStatus}
+                  className="text-xs text-slate-500 hover:text-indigo-600 font-medium flex items-center gap-1 transition-colors"
+                >
+                  <svg className={`w-3.5 h-3.5 ${loadingOneDrive ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Refresh Status
+                </button>
+              </div>
+
+              {/* Status Banner */}
+              <div className={`p-4 rounded-xl border ${oneDriveStatus?.connected ? 'bg-emerald-50/60 border-emerald-200/80 text-emerald-900' : 'bg-amber-50/60 border-amber-200/80 text-amber-900'}`}>
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${oneDriveStatus?.connected ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {oneDriveStatus?.connected ? '✓' : '!'}
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold uppercase tracking-wider">
+                        {oneDriveStatus?.connected ? 'OneDrive Storage Active' : 'OneDrive Not Connected'}
+                      </div>
+                      <div className="text-xs mt-0.5 opacity-90">
+                        {oneDriveStatus?.connected ? (
+                          <>Connected to <strong>{oneDriveStatus.accountEmail || oneDriveStatus.accountName}</strong></>
+                        ) : (
+                          'Connect your Microsoft account to enable cloud storage for all event documents.'
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {oneDriveStatus?.connected ? (
+                      <>
+                        <a
+                          href={getOneDriveLoginUrl()}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
+                        >
+                          Reconnect
+                        </a>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (window.confirm("Are you sure you want to disconnect OneDrive?")) {
+                              await disconnectOneDrive();
+                              loadOneDriveStatus();
+                            }
+                          }}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-red-200 text-red-600 hover:bg-red-50 transition-colors shadow-sm"
+                        >
+                          Disconnect
+                        </button>
+                      </>
+                    ) : (
+                      <a
+                        href={getOneDriveLoginUrl()}
+                        className="px-4 py-2 text-xs font-semibold rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm flex items-center gap-1.5"
+                      >
+                        Connect Microsoft Account
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Hierarchy Architecture Preview */}
+              <div className="space-y-2 pt-2">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Automated Folder Architecture</h4>
+                <div className="bg-slate-50 rounded-xl p-3.5 font-mono text-[11px] text-slate-700 leading-relaxed border border-slate-200">
+                  <div>📁 Academic Event Hub/</div>
+                  <div className="ml-4">├── 📁 IT Events/  (or AI & Data Science Events / Joint Events)</div>
+                  <div className="ml-8">└── 📁 2026-2027/</div>
+                  <div className="ml-12">└── 📁 Odd Semester/  (or Even Semester)</div>
+                  <div className="ml-16">└── 📁 [Event Name]/</div>
+                  <div className="ml-20 text-slate-500">├── file1.pdf</div>
+                  <div className="ml-20 text-slate-500">├── attendance.xlsx</div>
+                  <div className="ml-20 text-slate-500">├── feedback_report.pdf</div>
+                  <div className="ml-20 text-slate-500">└── AI_Analysis.pdf</div>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  All folders are created and matched automatically by the backend without manual intervention.
+                </p>
               </div>
             </div>
           )}

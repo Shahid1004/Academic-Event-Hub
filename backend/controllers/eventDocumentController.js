@@ -1,5 +1,4 @@
-const fs = require("fs");
-const path = require("path");
+const { Readable } = require("stream");
 const mongoose = require("mongoose");
 const { PDFDocument } = require("pdf-lib");
 const Event = require("../models/Event");
@@ -60,6 +59,10 @@ const publicDocument = (document) => {
     id: document._id.toString(),
     documentId: document._id.toString(),
     eventId: document.eventId,
+    eventName: document.eventName,
+    department: document.department,
+    academicYear: document.academicYear,
+    semester: document.semester,
     name: displayName,
     documentName: displayName,
     fileName: origName,
@@ -71,6 +74,9 @@ const publicDocument = (document) => {
     mimeType: document.mimeType,
     size: document.size,
     storagePath: document.storagePath,
+    oneDriveItemId: document.oneDriveItemId || "",
+    oneDriveParentFolderId: document.oneDriveParentFolderId || "",
+    oneDriveWebUrl: document.oneDriveWebUrl || "",
     url: `/api/event-documents/file/${document._id}`,
     fileUrl: `/api/event-documents/file/${document._id}`,
     order: document.order || 0,
@@ -104,7 +110,7 @@ const listEventDocuments = async (req, res) => {
   }
 };
 
-/** Upload a new document to structured event subfolder */
+/** Upload a new document directly to Microsoft OneDrive event folder */
 const uploadEventDocument = async (req, res) => {
   try {
     const rawEventId = req.params.eventId;
@@ -119,50 +125,71 @@ const uploadEventDocument = async (req, res) => {
       return res.status(400).json({ success: false, message: "A file is required" });
     }
 
+    const fileBuffer = req.file.buffer || (req.file.path ? require("fs").readFileSync(req.file.path) : null);
+    if (!fileBuffer) {
+      return res.status(400).json({ success: false, message: "No file content available" });
+    }
+
     const resolvedEventId = event.id || rawEventId;
     const categoryInput = req.body.documentType || req.body.category || "Other";
     const docType = storageService.mapCategoryToType(categoryInput);
     const originalName = req.file.originalname || "file";
     const displayName = req.body.documentName?.trim() || req.body.name?.trim() || originalName;
 
-    // Save physical file via storageService
-    const saved = await storageService.saveFile(
-      req.file.path,
-      resolvedEventId,
-      docType,
-      originalName
+    // Save directly to OneDrive event folder via Microsoft Graph API
+    const saved = await storageService.uploadFile(
+      fileBuffer,
+      originalName,
+      event,
+      categoryInput,
+      req.file.mimetype
     );
 
     const last = await EventDocument.findOne({ eventId: resolvedEventId }).sort({ order: -1 }).select("order").lean();
 
     const document = await EventDocument.create({
       eventId: resolvedEventId,
+      eventName: event.name || "",
+      department: event.department || "",
+      academicYear: event.academicYear || "",
+      semester: event.semester || "",
       name: displayName,
       filename: saved.filename,
       originalFilename: originalName,
       documentType: docType,
       category: categoryInput,
-      mimeType: req.file.mimetype,
-      size: req.file.size,
+      mimeType: req.file.mimetype || "application/octet-stream",
+      size: saved.size || req.file.size,
       storagePath: saved.storagePath,
+      oneDriveItemId: saved.oneDriveItemId,
+      oneDriveParentFolderId: saved.oneDriveParentFolderId,
+      oneDriveWebUrl: saved.oneDriveWebUrl,
       order: (last?.order ?? -1) + 1,
       status: "Uploaded",
       uploadedBy: req.user?._id,
       uploadedAt: new Date(),
     });
 
+    // Cleanup local temp file if one was created
+    if (req.file.path) {
+      try { require("fs").unlinkSync(req.file.path); } catch (e) { /* ignore */ }
+    }
+
     await refreshEventDocumentationStatus(resolvedEventId);
     return res.status(201).json({ success: true, data: publicDocument(document) });
   } catch (error) {
-    if (req.file?.path && fs.existsSync(req.file.path)) {
-      try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
+    if (req.file?.path) {
+      try { require("fs").unlinkSync(req.file.path); } catch (e) { /* ignore */ }
     }
     console.error("Event document upload failed:", error);
-    return res.status(500).json({ success: false, message: error.message || "Unable to upload document" });
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to upload document to OneDrive. Please check Microsoft connection.",
+    });
   }
 };
 
-/** Download or view a document */
+/** Download or view a document from OneDrive */
 const downloadEventDocument = async (req, res) => {
   try {
     const document = await EventDocument.findById(req.params.documentId).lean();
@@ -175,25 +202,34 @@ const downloadEventDocument = async (req, res) => {
       return res.status(403).json({ success: false, message: "You do not have access to this document" });
     }
 
-    const absolutePath = storageService.resolveFilePath(document.storagePath);
-    if (!absolutePath || !fs.existsSync(absolutePath)) {
-      return res.status(404).json({ success: false, message: "Physical document file not found on server" });
+    const safeFilename = (document.originalFilename || document.name || "file").replace(/"/g, "");
+
+    const fileStreamData = await storageService.getFileStream(document.oneDriveItemId, document.storagePath);
+
+    res.setHeader("Content-Type", fileStreamData.contentType || document.mimeType || "application/octet-stream");
+    res.setHeader("Content-Disposition", `inline; filename="${safeFilename}"`);
+    if (fileStreamData.contentLength) {
+      res.setHeader("Content-Length", fileStreamData.contentLength);
     }
 
-    const safeFilename = (document.originalFilename || document.name || "file").replace(/"/g, "");
-    return res.sendFile(absolutePath, {
-      headers: {
-        "Content-Type": document.mimeType || "application/octet-stream",
-        "Content-Disposition": `inline; filename="${safeFilename}"`
+    // Pipe response stream to client
+    if (fileStreamData.stream) {
+      if (typeof fileStreamData.stream.pipe === "function") {
+        return fileStreamData.stream.pipe(res);
       }
-    });
+      if (typeof Readable.fromWeb === "function") {
+        return Readable.fromWeb(fileStreamData.stream).pipe(res);
+      }
+    }
+
+    return res.status(500).json({ success: false, message: "Unable to stream file content" });
   } catch (error) {
     console.error("Document download failed:", error);
-    return res.status(500).json({ success: false, message: "Unable to download document" });
+    return res.status(500).json({ success: false, message: error.message || "Unable to download document" });
   }
 };
 
-/** Delete a document record and its physical file */
+/** Delete a document record and its OneDrive file */
 const deleteEventDocument = async (req, res) => {
   try {
     const document = await EventDocument.findById(req.params.documentId);
@@ -207,18 +243,22 @@ const deleteEventDocument = async (req, res) => {
     }
 
     const eventId = document.eventId;
-    storageService.deleteFile(document.storagePath);
+
+    // Delete physical file from OneDrive
+    await storageService.deleteFile(document.oneDriveItemId, document.storagePath);
+
+    // Delete record from database
     await document.deleteOne();
     await refreshEventDocumentationStatus(eventId);
 
-    return res.json({ success: true, message: "Document deleted successfully" });
+    return res.json({ success: true, message: "Document deleted successfully from OneDrive" });
   } catch (error) {
     console.error("Event document deletion failed:", error);
-    return res.status(500).json({ success: false, message: "Unable to delete document" });
+    return res.status(500).json({ success: false, message: error.message || "Unable to delete document" });
   }
 };
 
-/** Replace an existing document */
+/** Replace an existing document in OneDrive */
 const replaceEventDocument = async (req, res) => {
   try {
     const document = await EventDocument.findById(req.params.documentId);
@@ -233,16 +273,24 @@ const replaceEventDocument = async (req, res) => {
       return res.status(400).json({ success: false, message: "A file is required" });
     }
 
+    const fileBuffer = req.file.buffer || (req.file.path ? require("fs").readFileSync(req.file.path) : null);
+    if (!fileBuffer) {
+      return res.status(400).json({ success: false, message: "No file content available" });
+    }
+
+    const previousOneDriveItemId = document.oneDriveItemId;
     const previousStoragePath = document.storagePath;
     const categoryInput = req.body.documentType || req.body.category || document.category || "Other";
     const docType = storageService.mapCategoryToType(categoryInput);
     const originalName = req.file.originalname || document.originalFilename || "file";
 
-    const saved = await storageService.saveFile(
-      req.file.path,
-      document.eventId,
-      docType,
-      originalName
+    // Upload new file to OneDrive
+    const saved = await storageService.uploadFile(
+      fileBuffer,
+      originalName,
+      event,
+      categoryInput,
+      req.file.mimetype
     );
 
     document.name = req.body.documentName?.trim() || req.body.name?.trim() || document.name || originalName;
@@ -250,28 +298,36 @@ const replaceEventDocument = async (req, res) => {
     document.originalFilename = originalName;
     document.documentType = docType;
     document.category = categoryInput;
-    document.mimeType = req.file.mimetype;
-    document.size = req.file.size;
+    document.mimeType = req.file.mimetype || "application/octet-stream";
+    document.size = saved.size || req.file.size;
     document.storagePath = saved.storagePath;
+    document.oneDriveItemId = saved.oneDriveItemId;
+    document.oneDriveParentFolderId = saved.oneDriveParentFolderId;
+    document.oneDriveWebUrl = saved.oneDriveWebUrl;
     document.status = "Uploaded";
     document.uploadedAt = new Date();
     await document.save();
 
-    if (previousStoragePath && previousStoragePath !== saved.storagePath) {
-      storageService.deleteFile(previousStoragePath);
+    // Clean up previous file if ID changed
+    if (previousOneDriveItemId && previousOneDriveItemId !== saved.oneDriveItemId) {
+      await storageService.deleteFile(previousOneDriveItemId, previousStoragePath);
+    }
+
+    if (req.file.path) {
+      try { require("fs").unlinkSync(req.file.path); } catch (e) { /* ignore */ }
     }
 
     return res.json({ success: true, data: publicDocument(document) });
   } catch (error) {
-    if (req.file?.path && fs.existsSync(req.file.path)) {
-      try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
+    if (req.file?.path) {
+      try { require("fs").unlinkSync(req.file.path); } catch (e) { /* ignore */ }
     }
     console.error("Event document replacement failed:", error);
-    return res.status(500).json({ success: false, message: "Unable to replace document" });
+    return res.status(500).json({ success: false, message: error.message || "Unable to replace document" });
   }
 };
 
-/** Merge event PDFs/images into a single PDF report */
+/** Merge event PDFs/images into a single PDF report and persist to OneDrive */
 const mergeEventDocuments = async (req, res) => {
   try {
     const event = await findEvent(req.params.eventId);
@@ -297,40 +353,40 @@ const mergeEventDocuments = async (req, res) => {
     const unsupported = [];
 
     for (const document of documents) {
-      const absolutePath = storageService.resolveFilePath(document.storagePath);
-      if (!absolutePath || !fs.existsSync(absolutePath)) {
-        unavailable.push(document.name);
-        continue;
-      }
-      const bytes = fs.readFileSync(absolutePath);
-      const fileName = (document.originalFilename || document.name || "").toLowerCase();
-      const mimeType = (document.mimeType || "").toLowerCase();
+      try {
+        const bytes = await storageService.getFileBuffer(document.oneDriveItemId, document.storagePath);
+        const fileName = (document.originalFilename || document.name || "").toLowerCase();
+        const mimeType = (document.mimeType || "").toLowerCase();
 
-      if (mimeType === "application/pdf" || fileName.endsWith(".pdf")) {
-        const sourcePdf = await PDFDocument.load(bytes);
-        const pages = await mergedPdf.copyPages(sourcePdf, sourcePdf.getPageIndices());
-        pages.forEach(page => mergedPdf.addPage(page));
-      } else if (mimeType === "image/jpeg" || mimeType === "image/jpg" || /\.(jpe?g)$/.test(fileName)) {
-        const image = await mergedPdf.embedJpg(bytes);
-        const page = mergedPdf.addPage([595.28, 841.89]);
-        const scale = Math.min(535 / image.width, 781 / image.height);
-        const width = image.width * scale;
-        const height = image.height * scale;
-        page.drawImage(image, { x: (595.28 - width) / 2, y: (841.89 - height) / 2, width, height });
-      } else if (mimeType === "image/png" || fileName.endsWith(".png")) {
-        const image = await mergedPdf.embedPng(bytes);
-        const page = mergedPdf.addPage([595.28, 841.89]);
-        const scale = Math.min(535 / image.width, 781 / image.height);
-        const width = image.width * scale;
-        const height = image.height * scale;
-        page.drawImage(image, { x: (595.28 - width) / 2, y: (841.89 - height) / 2, width, height });
-      } else {
-        unsupported.push(document.name);
+        if (mimeType === "application/pdf" || fileName.endsWith(".pdf")) {
+          const sourcePdf = await PDFDocument.load(bytes);
+          const pages = await mergedPdf.copyPages(sourcePdf, sourcePdf.getPageIndices());
+          pages.forEach(page => mergedPdf.addPage(page));
+        } else if (mimeType === "image/jpeg" || mimeType === "image/jpg" || /\.(jpe?g)$/.test(fileName)) {
+          const image = await mergedPdf.embedJpg(bytes);
+          const page = mergedPdf.addPage([595.28, 841.89]);
+          const scale = Math.min(535 / image.width, 781 / image.height);
+          const width = image.width * scale;
+          const height = image.height * scale;
+          page.drawImage(image, { x: (595.28 - width) / 2, y: (841.89 - height) / 2, width, height });
+        } else if (mimeType === "image/png" || fileName.endsWith(".png")) {
+          const image = await mergedPdf.embedPng(bytes);
+          const page = mergedPdf.addPage([595.28, 841.89]);
+          const scale = Math.min(535 / image.width, 781 / image.height);
+          const width = image.width * scale;
+          const height = image.height * scale;
+          page.drawImage(image, { x: (595.28 - width) / 2, y: (841.89 - height) / 2, width, height });
+        } else {
+          unsupported.push(document.name);
+        }
+      } catch (err) {
+        console.warn(`[MergedReport] Failed to load bytes for document ${document.name}:`, err.message);
+        unavailable.push(document.name);
       }
     }
 
     if (unavailable.length || unsupported.length) {
-      const problems = [...unavailable.map(name => `${name} could not be found`), ...unsupported.map(name => `${name} is not a supported PDF or image format`)];
+      const problems = [...unavailable.map(name => `${name} could not be retrieved from OneDrive`), ...unsupported.map(name => `${name} is not a supported PDF or image format`)];
       return res.status(422).json({ success: false, message: `Unable to generate the merged report: ${problems.join(", ")}.` });
     }
     if (!mergedPdf.getPageCount()) {
@@ -338,12 +394,26 @@ const mergeEventDocuments = async (req, res) => {
     }
 
     const safeName = String(event.name || event.id || "Event").replace(/[^a-z0-9+]+/gi, "_").replace(/^_+|_+$/g, "") || "Event";
-    const bytes = await mergedPdf.save();
+    const pdfBytes = await mergedPdf.save();
+    const pdfBuffer = Buffer.from(pdfBytes);
+
+    // Save the merged report into the event's OneDrive folder (Section 19)
+    try {
+      await storageService.saveGeneratedReport(
+        event,
+        `${safeName}_Merged_Report.pdf`,
+        pdfBuffer,
+        "reports"
+      );
+    } catch (saveErr) {
+      console.warn("[MergedReport] Failed to save copy of merged report to OneDrive folder:", saveErr.message);
+    }
+
     res.set({ "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${safeName}_Merged_Report.pdf"` });
-    return res.send(Buffer.from(bytes));
+    return res.send(pdfBuffer);
   } catch (error) {
     console.error("Merged event report failed:", error);
-    return res.status(500).json({ success: false, message: "Unable to generate the merged report" });
+    return res.status(500).json({ success: false, message: error.message || "Unable to generate the merged report" });
   }
 };
 

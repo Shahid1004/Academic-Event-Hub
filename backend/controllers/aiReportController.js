@@ -1,9 +1,102 @@
 const mongoose = require("mongoose");
+const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
 const Event = require("../models/Event");
 const Attendance = require("../models/Attendance");
 const Feedback = require("../models/Feedback");
 const FeedbackForm = require("../models/FeedbackForm");
 const EventDocument = require("../models/EventDocument");
+const storageService = require("../services/storageService");
+
+/** Generate a clean PDF document from AI Report content */
+const createAiReportPdfBuffer = async (event, reportContent, attendanceSummary, feedbackSummary) => {
+  const pdfDoc = await PDFDocument.create();
+  let page = pdfDoc.addPage([595.28, 841.89]);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  let y = 800;
+  const margin = 50;
+  const width = 595.28 - 2 * margin;
+
+  const writeLine = (text, size = 10, isBold = false, color = rgb(0.1, 0.1, 0.1)) => {
+    if (y < 60) {
+      page = pdfDoc.addPage([595.28, 841.89]);
+      y = 800;
+    }
+    const currentFont = isBold ? boldFont : font;
+    page.drawText(text, { x: margin, y, size, font: currentFont, color });
+    y -= size + 5;
+  };
+
+  const writeParagraph = (text, size = 9) => {
+    if (!text) return;
+    const words = String(text).split(/\s+/);
+    let line = "";
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word;
+      if (test.length * (size * 0.48) > width && line) {
+        writeLine(line, size, false);
+        line = word;
+      } else {
+        line = test;
+      }
+    }
+    if (line) writeLine(line, size, false);
+    y -= 4;
+  };
+
+  // Header
+  writeLine("SONA COLLEGE OF TECHNOLOGY, SALEM", 13, true, rgb(0.12, 0.23, 0.54));
+  writeLine(`DEPARTMENT OF ${String(event.department || "INFORMATION TECHNOLOGY").toUpperCase()}`, 11, true, rgb(0.2, 0.3, 0.4));
+  writeLine("AI EVENT EVALUATION & ANALYSIS REPORT", 12, true, rgb(0.1, 0.1, 0.1));
+  y -= 8;
+
+  writeLine(`Event: ${event.name || "Academic Event"}`, 10, true);
+  writeLine(`Academic Year: ${event.academicYear || "N/A"} | Date: ${event.date ? String(event.date).slice(0, 10) : "N/A"}`, 9);
+  writeLine(`Coordinator: ${event.coordinator || "N/A"} | Department: ${event.department || "N/A"}`, 9);
+  y -= 8;
+
+  if (reportContent.eventOverview) {
+    writeLine("1. EXECUTIVE OVERVIEW", 10, true, rgb(0.12, 0.23, 0.54));
+    writeParagraph(reportContent.eventOverview);
+  }
+
+  if (reportContent.attendanceAnalysis?.summary) {
+    writeLine("2. ATTENDANCE ANALYSIS", 10, true, rgb(0.12, 0.23, 0.54));
+    writeParagraph(reportContent.attendanceAnalysis.summary);
+    if (reportContent.attendanceAnalysis.statistics) {
+      writeParagraph(reportContent.attendanceAnalysis.statistics);
+    }
+  }
+
+  if (reportContent.feedbackAnalysis?.overview) {
+    writeLine("3. FEEDBACK ANALYSIS", 10, true, rgb(0.12, 0.23, 0.54));
+    writeParagraph(reportContent.feedbackAnalysis.overview);
+    if (reportContent.feedbackAnalysis.studentSentiment) {
+      writeParagraph(`Sentiment: ${reportContent.feedbackAnalysis.studentSentiment}`);
+    }
+  }
+
+  if (Array.isArray(reportContent.eventStrengths) && reportContent.eventStrengths.length > 0) {
+    writeLine("4. KEY STRENGTHS", 10, true, rgb(0.12, 0.23, 0.54));
+    reportContent.eventStrengths.forEach((s, idx) => writeLine(`• ${s}`, 9));
+    y -= 6;
+  }
+
+  if (Array.isArray(reportContent.areasForImprovement) && reportContent.areasForImprovement.length > 0) {
+    writeLine("5. AREAS FOR IMPROVEMENT", 10, true, rgb(0.12, 0.23, 0.54));
+    reportContent.areasForImprovement.forEach((i, idx) => writeLine(`• ${i}`, 9));
+    y -= 6;
+  }
+
+  if (reportContent.overallAssessment) {
+    writeLine("6. OVERALL ASSESSMENT & CONCLUSION", 10, true, rgb(0.12, 0.23, 0.54));
+    writeParagraph(reportContent.overallAssessment);
+  }
+
+  const bytes = await pdfDoc.save();
+  return Buffer.from(bytes);
+};
 
 const findEvent = async (eventId) => {
   const byPublicId = await Event.findOne({ id: eventId }).lean();
@@ -418,12 +511,42 @@ const generateAIReport = async (req, res) => {
 
     const feedbackData = { analytics: analyticsData, rawRecords, formQuestions: feedbackForm?.questions || [] };
 
-    // 4. Fetch Documents
+    // 4. Fetch Documents from MongoDB & OneDrive
     let documents = [];
     try {
       documents = await EventDocument.find({ eventId: resolvedEventId }).lean();
     } catch (e) {
       documents = [];
+    }
+
+    // Also check OneDrive event folder for uploaded documents
+    try {
+      const oneDriveFolderService = require("../services/oneDriveFolderService");
+      const folderInfo = await oneDriveFolderService.getOrCreateEventFolder(event);
+      if (folderInfo?.folderId) {
+        const listRes = await oneDriveFolderService.graphRequest(
+          `/me/drive/items/${folderInfo.folderId}/children?$select=id,name,size,file,webUrl`
+        );
+        if (listRes?.value) {
+          const knownNames = new Set(documents.map(d => (d.filename || d.name || "").toLowerCase()));
+          for (const item of listRes.value) {
+            if (item.file && !knownNames.has(item.name.toLowerCase())) {
+              documents.push({
+                name: item.name,
+                documentName: item.name,
+                filename: item.name,
+                originalFilename: item.name,
+                category: "OneDrive Document",
+                documentType: "documents",
+                oneDriveItemId: item.id,
+                oneDriveWebUrl: item.webUrl,
+              });
+            }
+          }
+        }
+      }
+    } catch (oneDriveScanErr) {
+      console.warn("[AI Report] OneDrive document scan warning:", oneDriveScanErr.message);
     }
 
     // 5. Build the AI prompt
@@ -477,6 +600,43 @@ const generateAIReport = async (req, res) => {
     if (!reportContent) {
       console.log("[AI Report] Using client-side fallback analysis");
       reportContent = buildFallbackReport(event, attendanceData, feedbackData, documents);
+    }
+
+    // Persist permanent AI Analysis Report to OneDrive (Section 19)
+    try {
+      const pdfBuf = await createAiReportPdfBuffer(event, reportContent, attendanceData.summary, analyticsData);
+      const safeEventName = (event.name || event.id || "Event").replace(/[^a-zA-Z0-9_-]/g, "_");
+      const reportFilename = `${safeEventName}_AI_Analysis.pdf`;
+      const savedReport = await storageService.saveGeneratedReport(event, reportFilename, pdfBuf, "reports");
+
+      if (savedReport?.oneDriveItemId) {
+        await EventDocument.findOneAndUpdate(
+          { eventId: resolvedEventId, name: "AI Analysis Report" },
+          {
+            eventId: resolvedEventId,
+            eventName: event.name || "",
+            department: event.department || "",
+            academicYear: event.academicYear || "",
+            semester: event.semester || "",
+            name: "AI Analysis Report",
+            filename: savedReport.filename,
+            originalFilename: reportFilename,
+            documentType: "reports",
+            category: "Reports",
+            mimeType: "application/pdf",
+            size: savedReport.size,
+            storagePath: savedReport.storagePath,
+            oneDriveItemId: savedReport.oneDriveItemId,
+            oneDriveParentFolderId: savedReport.oneDriveParentFolderId,
+            oneDriveWebUrl: savedReport.oneDriveWebUrl,
+            status: "Generated",
+            uploadedAt: new Date(),
+          },
+          { upsert: true, new: true }
+        );
+      }
+    } catch (pdfSaveErr) {
+      console.warn("[AI Report] Notice: Could not persist AI report copy to OneDrive:", pdfSaveErr.message);
     }
 
     // 8. Return structured response

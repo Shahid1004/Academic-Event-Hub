@@ -279,6 +279,46 @@ export async function updateProfile(profile: Partial<UserProfile>) {
   return response.data.profile;
 }
 
+export interface OneDriveStatus {
+  connected: boolean;
+  configured: boolean;
+  accountEmail?: string;
+  accountName?: string;
+  lastRefreshedAt?: string;
+  driveId?: string;
+}
+
+export async function getOneDriveStatus(): Promise<OneDriveStatus> {
+  try {
+    const response = await axios.get<{ success: boolean; data: OneDriveStatus }>(
+      `${apiUrl}/api/onedrive/auth/status`,
+      { headers: { Authorization: `Bearer ${getToken()}` } }
+    );
+    return response.data.data;
+  } catch (err) {
+    console.warn("Failed to fetch OneDrive status:", err);
+    return { connected: false, configured: false };
+  }
+}
+
+export function getOneDriveLoginUrl(): string {
+  return `${apiUrl}/api/onedrive/auth/login`;
+}
+
+export async function disconnectOneDrive(): Promise<boolean> {
+  try {
+    await axios.post(
+      `${apiUrl}/api/onedrive/auth/disconnect`,
+      {},
+      { headers: { Authorization: `Bearer ${getToken()}` } }
+    );
+    return true;
+  } catch (err) {
+    console.error("Failed to disconnect OneDrive:", err);
+    return false;
+  }
+}
+
 export async function getUsers() {
   const response = await axios.get<{ users: UserProfile[] }>(
     `${apiUrl}/api/users`,
@@ -406,7 +446,12 @@ export async function qrCheckInApi(eventId: string, regNo: string, studentName?:
   }
 }
 
-export async function scanHardCopyAttendanceApi(filesInput?: File | File[], sheetType: 'signed' | 'participant_list' = 'signed', eventId?: string) {
+export async function scanHardCopyAttendanceApi(
+  filesInput?: File | File[],
+  sheetType: 'signed' | 'participant_list' = 'signed',
+  eventId?: string,
+  onUploadProgress?: (percent: number) => void
+) {
   try {
     const token = getToken();
     const formData = new FormData();
@@ -479,6 +524,12 @@ export async function scanHardCopyAttendanceApi(filesInput?: File | File[], shee
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress: (progressEvent) => {
+        if (progressEvent.total && onUploadProgress) {
+          const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          onUploadProgress(percent);
+        }
       },
     });
     return response.data;

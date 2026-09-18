@@ -246,6 +246,8 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
   const [hardCopyScanError, setHardCopyScanError] = useState<string | null>(null);
   const [selectedHardCopyFiles, setSelectedHardCopyFiles] = useState<File[]>([]);
   const [hardCopyProcessingProgress, setHardCopyProcessingProgress] = useState<string | null>(null);
+  const [hardCopyProgressPercentage, setHardCopyProgressPercentage] = useState<number>(0);
+  const [hardCopyProgressStage, setHardCopyProgressStage] = useState<string>('');
   const [hardCopyMultiSummary, setHardCopyMultiSummary] = useState<any | null>(null);
   const [hardCopyRows, setHardCopyRows] = useState<Array<{
     regNo: string;
@@ -682,13 +684,51 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
     setHardCopyScanError(null);
     setHardCopyScanning(true);
     setHardCopyMultiSummary(null);
+    setHardCopyProgressPercentage(5);
+    setHardCopyProgressStage(`Uploading ${files.length} attendance sheet(s)...`);
 
     const displayName = files.length === 1 ? files[0].name : `${files.length} Attendance Sheets`;
     setHardCopyFileName(displayName);
-    setHardCopyProcessingProgress(`Processing 1 of ${files.length} sheets with AI Vision...`);
+    setHardCopyProcessingProgress(`Processing ${files.length} sheet(s) with AI Vision...`);
+
+    let currentPercent = 10;
+    const progressTimer = setInterval(() => {
+      currentPercent += Math.floor(Math.random() * 3) + 2;
+      if (currentPercent > 94) {
+        currentPercent = 94;
+      }
+      setHardCopyProgressPercentage(currentPercent);
+      if (currentPercent < 25) {
+        setHardCopyProgressStage(`Uploading ${files.length} sheet(s) to server...`);
+      } else if (currentPercent < 48) {
+        setHardCopyProgressStage('Scanning sheet layout & OCR text recognition...');
+      } else if (currentPercent < 70) {
+        setHardCopyProgressStage('Extracting student roll numbers & names via AI...');
+      } else if (currentPercent < 86) {
+        setHardCopyProgressStage('Verifying signatures & attendance status...');
+      } else {
+        setHardCopyProgressStage('Consolidating & finalizing attendance roster...');
+      }
+    }, 350);
 
     try {
-      const apiResult = await scanHardCopyAttendanceApi(files, hardCopySheetType, eventId);
+      const apiResult = await scanHardCopyAttendanceApi(
+        files,
+        hardCopySheetType,
+        eventId,
+        (uploadPercent) => {
+          const scaled = Math.min(25, Math.max(5, Math.round(uploadPercent * 0.25)));
+          if (scaled > currentPercent) {
+            currentPercent = scaled;
+            setHardCopyProgressPercentage(currentPercent);
+          }
+        }
+      );
+
+      clearInterval(progressTimer);
+      setHardCopyProgressPercentage(100);
+      setHardCopyProgressStage('Extraction completed successfully (100%)');
+      await new Promise((resolve) => setTimeout(resolve, 400));
 
       if (apiResult && apiResult.success && apiResult.data?.students?.length) {
         const cleanStudents = apiResult.data.students.filter(validateAiStudentRow);
@@ -727,8 +767,11 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
       console.error('Error scanning hard copy file(s):', err);
       setHardCopyScanError(`⚠️ Failed to scan documents: ${err.message || 'Server connection error'}`);
     } finally {
+      clearInterval(progressTimer);
       setHardCopyScanning(false);
       setHardCopyProcessingProgress(null);
+      setHardCopyProgressPercentage(0);
+      setHardCopyProgressStage('');
       setTimeout(() => setSaveToast(null), 4000);
     }
   };
@@ -1685,41 +1728,84 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
 
                   {/* Drag-and-Drop & Browse File Selection Area */}
                   <div
-                    className="border-2 border-dashed border-indigo-200 rounded-2xl p-8 text-center bg-indigo-50/30 space-y-3 transition-colors hover:border-indigo-400"
+                    className={`border-2 rounded-2xl p-6 text-center space-y-3 transition-all ${
+                      hardCopyScanning
+                        ? 'border-indigo-400 bg-indigo-50/50 shadow-inner'
+                        : 'border-dashed border-indigo-200 bg-indigo-50/30 hover:border-indigo-400'
+                    }`}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => {
                       e.preventDefault();
-                      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                      if (!hardCopyScanning && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                         const droppedFiles = Array.from(e.dataTransfer.files);
                         setSelectedHardCopyFiles((prev) => [...prev, ...droppedFiles]);
                       }
                     }}
                   >
-                    <div className="text-5xl">📄</div>
-                    <div className="text-slate-700 font-medium text-sm">
-                      {hardCopyScanning
-                        ? (hardCopyProcessingProgress || 'Analyzing documents with Multimodal AI Vision API...')
-                        : 'Drop physical attendance sheets here or click Browse & Add Sheets'}
-                    </div>
-                    <div className="text-slate-400 text-xs">Supported: PDF, JPG, JPEG, PNG, Mobile Snapshots (Select multiple files simultaneously)</div>
+                    {hardCopyScanning ? (
+                      <div className="max-w-md mx-auto space-y-3 py-2">
+                        <div className="flex items-center justify-center gap-3">
+                          <span className="w-8 h-8 border-3 border-indigo-200 border-t-indigo-600 rounded-full animate-spin inline-block" />
+                          <div className="text-left">
+                            <div className="text-sm font-bold text-slate-800">
+                              Scanning Hard Copy Attendance
+                            </div>
+                            <div className="text-xs text-indigo-600 font-medium">
+                              {hardCopyProgressStage || 'Processing sheets with Multimodal AI Vision...'}
+                            </div>
+                          </div>
+                        </div>
 
-                    <div className="flex items-center justify-center gap-3 pt-2">
-                      <label className="inline-block px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-md cursor-pointer transition-all">
-                        ➕ {selectedHardCopyFiles.length > 0 ? 'Add More Sheets' : 'Browse & Add Sheets'}
-                        <input
-                          type="file"
-                          accept="image/*,.pdf"
-                          multiple
-                          className="hidden"
-                          onChange={(e) => {
-                            if (e.target.files && e.target.files.length > 0) {
-                              const newFiles = Array.from(e.target.files);
-                              setSelectedHardCopyFiles((prev) => [...prev, ...newFiles]);
-                            }
-                          }}
-                        />
-                      </label>
-                    </div>
+                        {/* Progress Bar and Percentage Indicator */}
+                        <div className="bg-white p-3.5 rounded-xl border border-indigo-100 shadow-sm space-y-2">
+                          <div className="flex items-center justify-between text-xs font-bold">
+                            <span className="text-slate-700 flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-indigo-600 animate-ping" />
+                              AI Vision Progress
+                            </span>
+                            <span className="text-indigo-600 text-sm font-black tracking-tight">
+                              {hardCopyProgressPercentage}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden p-0.5 border border-slate-200">
+                            <div
+                              className="bg-gradient-to-r from-indigo-500 via-indigo-600 to-violet-600 h-full rounded-full transition-all duration-300 ease-out"
+                              style={{ width: `${hardCopyProgressPercentage}%` }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between text-[11px] text-slate-400 pt-0.5">
+                            <span className="truncate max-w-[200px]">{hardCopyFileName || 'Document sheets'}</span>
+                            <span className="font-semibold text-indigo-700">{hardCopyProgressPercentage}% completed</span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="text-5xl">📄</div>
+                        <div className="text-slate-700 font-medium text-sm">
+                          Drop physical attendance sheets here or click Browse & Add Sheets
+                        </div>
+                        <div className="text-slate-400 text-xs">Supported: PDF, JPG, JPEG, PNG, Mobile Snapshots (Select multiple files simultaneously)</div>
+
+                        <div className="flex items-center justify-center gap-3 pt-2">
+                          <label className="inline-block px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-md cursor-pointer transition-all">
+                            ➕ {selectedHardCopyFiles.length > 0 ? 'Add More Sheets' : 'Browse & Add Sheets'}
+                            <input
+                              type="file"
+                              accept="image/*,.pdf"
+                              multiple
+                              className="hidden"
+                              onChange={(e) => {
+                                if (e.target.files && e.target.files.length > 0) {
+                                  const newFiles = Array.from(e.target.files);
+                                  setSelectedHardCopyFiles((prev) => [...prev, ...newFiles]);
+                                }
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   {/* Staged File List & Extract Action */}
@@ -1731,7 +1817,8 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
                         </h4>
                         <button
                           onClick={() => setSelectedHardCopyFiles([])}
-                          className="text-xs text-rose-600 hover:text-rose-800 font-semibold"
+                          disabled={hardCopyScanning}
+                          className="text-xs text-rose-600 hover:text-rose-800 font-semibold disabled:opacity-40"
                         >
                           Clear All Staged Files
                         </button>
@@ -1753,7 +1840,8 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
                             </div>
                             <button
                               onClick={() => setSelectedHardCopyFiles((prev) => prev.filter((_, i) => i !== idx))}
-                              className="text-slate-400 hover:text-rose-600 font-bold px-2 py-1"
+                              disabled={hardCopyScanning}
+                              className="text-slate-400 hover:text-rose-600 font-bold px-2 py-1 disabled:opacity-30"
                               title="Remove file"
                             >
                               ✕
@@ -1763,15 +1851,32 @@ export default function EventDetails({ eventId, navigate }: EventDetailsProps) {
                       </div>
 
                       <div className="pt-2">
+                        {hardCopyScanning && (
+                          <div className="mb-3 bg-white p-3 rounded-xl border border-indigo-100 shadow-sm space-y-1.5">
+                            <div className="flex items-center justify-between text-xs font-bold">
+                              <span className="text-slate-700 truncate max-w-[240px]">
+                                {hardCopyProgressStage || 'Processing sheets...'}
+                              </span>
+                              <span className="text-indigo-600 text-xs font-black">{hardCopyProgressPercentage}%</span>
+                            </div>
+                            <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                              <div
+                                className="bg-gradient-to-r from-indigo-500 to-violet-600 h-full rounded-full transition-all duration-300"
+                                style={{ width: `${hardCopyProgressPercentage}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+
                         <button
                           onClick={() => handleHardCopyScanFile(selectedHardCopyFiles)}
                           disabled={hardCopyScanning}
-                          className="w-full py-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-xl text-sm font-bold shadow-md disabled:opacity-60 transition-all flex items-center justify-center gap-2"
+                          className="w-full py-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-xl text-sm font-bold shadow-md disabled:opacity-75 transition-all flex items-center justify-center gap-2"
                         >
                           {hardCopyScanning ? (
                             <>
                               <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                              <span>{hardCopyProcessingProgress || 'Extracting All Sheets...'}</span>
+                              <span>Processing... {hardCopyProgressPercentage}% completed</span>
                             </>
                           ) : (
                             <span>🚀 Extract All Sheets ({selectedHardCopyFiles.length})</span>

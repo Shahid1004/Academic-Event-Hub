@@ -156,6 +156,25 @@ const createEvent = async (req, res) => {
       console.warn("Auto attendance seeding failed:", err.message);
     }
 
+    // Automatically create event folder in OneDrive
+    try {
+      const oneDriveFolderService = require("../services/oneDriveFolderService");
+      const folderInfo = await oneDriveFolderService.getOrCreateEventFolder(event);
+      if (folderInfo?.folderId) {
+        event.oneDriveFolderId = folderInfo.folderId;
+        event.oneDriveFolderPath = folderInfo.folderPath;
+        await Event.updateOne({ _id: event._id }, {
+          $set: {
+            oneDriveFolderId: folderInfo.folderId,
+            oneDriveFolderPath: folderInfo.folderPath,
+            semester: folderInfo.semester || event.semester
+          }
+        });
+      }
+    } catch (oneDriveErr) {
+      console.warn("[EventController] Auto OneDrive folder creation notice:", oneDriveErr.message);
+    }
+
     return res.status(201).json({ success: true, data: event });
   } catch (error) {
     console.error("Event creation failed:", error.message);
@@ -163,12 +182,61 @@ const createEvent = async (req, res) => {
   }
 };
 
-const fs = require("fs");
-const path = require("path");
+const storageService = require("../services/storageService");
+const oneDriveFolderService = require("../services/oneDriveFolderService");
 const EventDocument = require("../models/EventDocument");
 const Attendance = require("../models/Attendance");
 const Feedback = require("../models/Feedback");
 const FeedbackForm = require("../models/FeedbackForm");
+
+const updateEvent = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Event ID is required" });
+    }
+
+    let event = null;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      event = await Event.findById(id);
+    }
+    if (!event) {
+      event = await Event.findOne({ id });
+    }
+    if (!event) {
+      return res.status(404).json({ success: false, message: "Event not found" });
+    }
+
+    const oldEvent = event.toObject();
+
+    // Update fields
+    const updates = { ...req.body };
+    if (updates.department) {
+      updates.department = normalizeDepartment(updates.department);
+    }
+    if (updates.date) {
+      updates.date = parseEventDate(updates.date);
+    }
+    if (updates.dateTo) {
+      updates.dateTo = parseEventDate(updates.dateTo) || updates.date;
+    }
+
+    Object.assign(event, updates);
+    await event.save();
+
+    // Sync OneDrive event folder if name, department, year, or semester changed
+    try {
+      await oneDriveFolderService.syncEventFolder(event, oldEvent);
+    } catch (syncErr) {
+      console.warn("[EventController] Sync OneDrive folder warning:", syncErr.message);
+    }
+
+    return res.json({ success: true, data: event });
+  } catch (error) {
+    console.error("Update event failed:", error.message);
+    return res.status(500).json({ success: false, message: "Failed to update event" });
+  }
+};
 
 const deleteEvent = async (req, res) => {
   try {
@@ -192,37 +260,37 @@ const deleteEvent = async (req, res) => {
     const mongoId = event._id.toString();
     const eventIds = [...new Set([publicId, mongoId].filter(Boolean))];
 
-    // 1. Delete associated event documents and files on disk
+    // 1. Delete associated event documents from OneDrive and disk
     const eventDocs = await EventDocument.find({ eventId: { $in: eventIds } });
     for (const doc of eventDocs) {
-      if (doc.storagePath) {
-        const fullPath = path.isAbsolute(doc.storagePath)
-          ? doc.storagePath
-          : path.join(__dirname, "..", doc.storagePath);
-        try {
-          if (fs.existsSync(fullPath)) {
-            await fs.promises.unlink(fullPath);
-          }
-        } catch (err) {
-          console.warn(`Failed to delete document file ${fullPath}:`, err.message);
-        }
+      try {
+        await storageService.deleteFile(doc.oneDriveItemId, doc.storagePath);
+      } catch (err) {
+        console.warn(`Failed to delete document ${doc._id} from OneDrive:`, err.message);
       }
     }
     await EventDocument.deleteMany({ eventId: { $in: eventIds } });
 
-    // 2. Delete attendance records
+    // 2. Delete entire event folder from OneDrive
+    try {
+      await storageService.deleteEventStorage(event);
+    } catch (folderErr) {
+      console.warn(`Failed to delete event folder for ${event.id} from OneDrive:`, folderErr.message);
+    }
+
+    // 3. Delete attendance records
     await Attendance.deleteMany({ $or: [{ eventId: { $in: eventIds } }, { event: { $in: eventIds } }] });
 
-    // 3. Delete feedback records and forms
+    // 4. Delete feedback records and forms
     await Feedback.deleteMany({ eventId: { $in: eventIds } });
     await FeedbackForm.deleteMany({ eventId: { $in: eventIds } });
 
-    // 4. Delete main Event database record
+    // 5. Delete main Event database record
     await Event.deleteOne({ _id: event._id });
 
     return res.json({
       success: true,
-      message: "Event and all associated data deleted successfully, including database records and documents."
+      message: "Event and all associated data deleted successfully, including OneDrive folders, documents, and database records."
     });
   } catch (error) {
     console.error("Event deletion failed:", error.message);
@@ -262,4 +330,4 @@ const getEventById = async (req, res) => {
   }
 };
 
-module.exports = { listEvents, listCalendarEvents, createEvent, deleteEvent, getEventById };
+module.exports = { listEvents, listCalendarEvents, createEvent, updateEvent, deleteEvent, getEventById };

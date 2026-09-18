@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import type { AppSettings, Page, UserProfile } from '../types';
-import { notifications } from '../data/sampleData';
 
 interface LayoutProps {
   currentPage: Page;
@@ -66,7 +65,6 @@ function Icon({ name, className = 'w-[18px] h-[18px]' }: { name: string; classNa
     'bar-chart-2': <><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></>,
     'trending-up': <><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" /></>,
     settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>,
-    bell: <><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></>,
     user: <><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></>,
     chevronDown: <polyline points="6 9 12 15 18 9" />,
     menu: <><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" /></>,
@@ -102,12 +100,7 @@ const roleColors: Record<string, string> = {
 
 export default function Layout({ currentPage, navigate, children, userRole = 'faculty', academicYear, academicYears, onAcademicYearChange, profile, settings, onSettingsChange }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
-
-  const visibleNotifications = settings
-    ? notifications.filter(notification => settings.notifications[notification.preferenceKey] !== false)
-    : notifications;
 
   const confirmLogout = () => {
     if (window.confirm('Are you sure you want to log out?')) {
@@ -320,77 +313,11 @@ export default function Layout({ currentPage, navigate, children, userRole = 'fa
               <Icon name={isDark ? 'sun' : 'moon'} className="w-4.5 h-4.5" />
             </button>
 
-            {/* Notifications */}
-            <div className="relative">
-              <button
-                onClick={() => { setShowNotifications(!showNotifications); setShowProfile(false); }}
-                className="relative p-2 rounded-lg transition-all"
-                style={{ color: isDark ? '#CBD5E1' : undefined }}
-              >
-                <Icon name="bell" className="w-4.5 h-4.5" />
-                {visibleNotifications.length > 0 && (
-                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white" />
-                )}
-              </button>
-
-              {showNotifications && (
-                <div
-                  className="absolute right-0 top-12 w-80 rounded-xl z-50 overflow-hidden"
-                  style={isDark ? {
-                    background: '#1E293B',
-                    boxShadow: '0 16px 48px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)',
-                    border: '1px solid rgba(255,255,255,0.12)'
-                  } : {
-                    background: '#FFFFFF',
-                    boxShadow: '0 10px 40px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.06)',
-                    border: '1px solid #E8ECF0'
-                  }}
-                >
-                  <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #F1F5F9' }}>
-                    <div>
-                      <span className="font-semibold text-sm" style={{ color: isDark ? '#F8FAFC' : undefined }}>Notifications</span>
-                      {visibleNotifications.length > 0 && (
-                        <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                          style={isDark ? { background: 'rgba(239,68,68,0.2)', color: '#F87171' } : { background: undefined, color: undefined }}
-                        >
-                          {isDark ? '' : <span className="bg-red-100 text-red-600">{visibleNotifications.length} new</span>}
-                          {isDark && `${visibleNotifications.length} new`}
-                        </span>
-                      )}
-                    </div>
-                    <button onClick={() => setShowNotifications(false)} className="p-1 rounded" style={{ color: isDark ? '#94A3B8' : undefined }}>
-                      <Icon name="x" className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <div className="max-h-72 overflow-y-auto">
-                    {visibleNotifications.length === 0 && (
-                      <p className="px-4 py-8 text-sm text-center" style={{ color: isDark ? '#94A3B8' : undefined }}>No new notifications</p>
-                    )}
-                    {visibleNotifications.map(n => (
-                      <button
-                        key={n.id}
-                        onClick={() => { navigate('event-details', n.eventId); setShowNotifications(false); }}
-                        className="w-full flex items-start gap-3 px-4 py-3 text-left transition-colors"
-                        style={{ borderBottom: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid #F8FAFC' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : '#F8FAFC')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                      >
-                        <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${n.type === 'success' ? 'bg-emerald-500' : n.type === 'warning' ? 'bg-amber-500' : 'bg-blue-500'}`} />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[13px] leading-snug" style={{ color: isDark ? '#CBD5E1' : '#374151' }}>{n.text}</p>
-                          <p className="text-[11px] mt-0.5" style={{ color: isDark ? '#94A3B8' : '#94A3B8' }}>{n.time}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
 
             {/* Profile */}
             <div className="relative">
               <button
-                onClick={() => { setShowProfile(!showProfile); setShowNotifications(false); }}
+                onClick={() => { setShowProfile(!showProfile); }}
                 className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-xl transition-colors"
                 style={{ color: isDark ? '#CBD5E1' : undefined }}
                 onMouseEnter={e => (e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9')}
