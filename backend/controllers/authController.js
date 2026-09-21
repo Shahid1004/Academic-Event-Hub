@@ -152,7 +152,9 @@ exports.login = async (req, res) => {
   } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({
-      message: "Login failed"
+      message: error.message?.includes("buffering timed out")
+        ? "Database connection timed out. Please verify database connectivity."
+        : (error.message || "Login failed")
     });
   }
 };

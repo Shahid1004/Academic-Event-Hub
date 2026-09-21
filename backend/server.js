@@ -64,6 +64,65 @@ app.use(
 );
 app.use(express.json());
 
+// Cache connection promise across serverless invocations
+let cachedDbPromise = null;
+
+const connectToDatabase = async () => {
+  if (mongoose.connection.readyState === 1) {
+    return mongoose.connection;
+  }
+
+  if (!cachedDbPromise) {
+    const mongoUri = getMongoUri();
+    cachedDbPromise = mongoose.connect(mongoUri, {
+      serverSelectionTimeoutMS: 10000,
+      connectTimeoutMS: 10000,
+      socketTimeoutMS: 45000
+    }).then(() => {
+      console.log("MongoDB connected");
+      return mongoose.connection;
+    }).catch((err) => {
+      cachedDbPromise = null;
+      console.error("MongoDB connection failed:", err.message);
+      throw err;
+    });
+  }
+
+  return cachedDbPromise;
+};
+
+// Start connection attempt immediately
+connectToDatabase().catch((err) => {
+  console.error("Initial MongoDB connection attempt error:", err.message);
+});
+
+app.get(["/api/test", "/test"], (req, res) => {
+  res.json({
+    message: "Backend is working",
+    dbReadyState: mongoose.connection.readyState
+  });
+});
+
+app.get(["/", "/api"], (req, res) => {
+  res.json({
+    message: "Academic Event Hub API is running",
+    dbReadyState: mongoose.connection.readyState
+  });
+});
+
+// Middleware to ensure DB is connected before handling /api routes
+app.use(async (req, res, next) => {
+  try {
+    await connectToDatabase();
+    next();
+  } catch (error) {
+    console.error("Database connection unavailable for request:", req.path, error.message);
+    return res.status(500).json({
+      message: "Database connection failed. Please check server logs and configuration."
+    });
+  }
+});
+
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/departments", departmentRoutes);
@@ -76,33 +135,6 @@ app.use("/api/event-documents", eventDocumentRoutes);
 app.use("/api/student", studentRoutes);
 app.use("/api/ai-report", aiReportRoutes);
 app.use("/api/onedrive/auth", oneDriveAuthRoutes);
-
-app.get(["/api/test", "/test"], (req, res) => {
-  res.json({ message: "Backend is working" });
-});
-
-app.get(["/", "/api"], (req, res) => {
-  res.json({ message: "Academic Event Hub API is running" });
-});
-
-let mongoUri;
-try {
-  mongoUri = getMongoUri();
-  mongoose.connect(mongoUri, {
-    serverSelectionTimeoutMS: 10000,
-    connectTimeoutMS: 10000,
-    socketTimeoutMS: 45000
-  })
-    .then(() => {
-      console.log("MongoDB connected");
-    })
-    .catch((err) => {
-      console.error("MongoDB connection failed:", err.message);
-      console.log("Warning: Continuing to run server without a working database.");
-    });
-} catch (error) {
-  console.error(`MongoDB configuration failed: ${error.message}`);
-}
 
 const PORT = process.env.PORT || 5000;
 
