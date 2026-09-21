@@ -96,14 +96,26 @@ connectToDatabase().catch((err) => {
   console.error("Initial MongoDB connection attempt error:", err.message);
 });
 
-app.get(["/api/test", "/test"], (req, res) => {
+app.get(["/api/test", "/test"], async (req, res) => {
+  let dbStatus = "disconnected";
+  let errorMsg = null;
+  try {
+    await connectToDatabase();
+    dbStatus = "connected";
+  } catch (err) {
+    dbStatus = "error";
+    errorMsg = err.message;
+  }
+
   res.json({
     message: "Backend is working",
-    dbReadyState: mongoose.connection.readyState
+    dbReadyState: mongoose.connection.readyState,
+    dbStatus,
+    error: errorMsg
   });
 });
 
-app.get(["/", "/api"], (req, res) => {
+app.get(["/", "/api"], async (req, res) => {
   res.json({
     message: "Academic Event Hub API is running",
     dbReadyState: mongoose.connection.readyState
