@@ -1,7 +1,24 @@
 import axios from 'axios';
 import type { AppSettings, AttendanceStatus, AttendanceSummary, CreateEventPayload, DashboardSummary, EventRecord, StudentAttendanceRecord, UserProfile } from '../types';
 
-const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const getApiUrl = (): string => {
+  const envUrl = (import.meta.env.VITE_API_URL || '').trim();
+
+  // In production builds, NEVER allow localhost or 127.0.0.1
+  if (import.meta.env.PROD) {
+    if (!envUrl || envUrl.includes('localhost') || envUrl.includes('127.0.0.1')) {
+      // Use relative same-origin calls on the deployed domain (/api/...)
+      return '';
+    }
+    // If set to /api or /api/, strip trailing /api so `${apiUrl}/api/...` remains valid
+    return envUrl.replace(/\/api\/?$/, '').replace(/\/$/, '');
+  }
+
+  // In local development, use VITE_API_URL if set and valid, otherwise default to http://localhost:5000
+  return envUrl || 'http://localhost:5000';
+};
+
+export const apiUrl = getApiUrl();
 
 const getToken = () => localStorage.getItem('token') || sessionStorage.getItem('token');
 

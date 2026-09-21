@@ -2,6 +2,7 @@ import { useState } from 'react';
 import axios from 'axios';
 import sonaCollegeImg from '../imports/sona_college.jpeg';
 import type { UserRole } from '../types';
+import { apiUrl } from '../services/api';
 
 interface LoginProps {
   onLogin: (user: AuthUser, token: string, remember: boolean) => void;
@@ -18,7 +19,6 @@ interface AuthUser {
   active: boolean;
 }
 
-const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const isStrongPassword = (value: string) =>
   value.length >= 8 && /[a-z]/.test(value) && /[A-Z]/.test(value) && /\d/.test(value);
 

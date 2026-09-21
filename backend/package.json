@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test"
   },
   "keywords": [],
   "author": "",
@@ -21,7 +21,8 @@
     "mongoose": "^9.9.3",
     "multer": "^2.3.0",
     "nodemailer": "^9.0.5",
-    "openai": "^7.8.0"
+    "openai": "^7.8.0",
+    "pdf-lib": "^1.17.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
